@@ -14,6 +14,25 @@ Bu kılavuz, uygulamayı ilk kez açan birinin kurulumdan ilk e-kitabına kadar 
 
 ## 1. İlk kurulum ve ortam hazırlığı
 
+### En kolay yol: tek tıkla kurulum (Windows)
+
+1. GitHub sayfasında **Code → Download ZIP** ile projeyi indir ve ZIP'i bir klasöre çıkar (örn. `C:\erme-books`).
+2. Klasördeki **`kurulum.bat`** dosyasına çift tıkla. Açılan pencere adım adım şunları yapar:
+
+| Adım | Ne olur |
+|---|---|
+| 1/5 Gerekli programlar | Node.js, Python 3.12 ve Ollama kurulu değilse `winget` ile kurulur. İzin penceresi çıkarsa **Evet** de |
+| 2/5 Python paketleri | `requirements.txt` kurulur |
+| 3/5 Uygulama bağımlılıkları | `npm install` (Electron ve Three.js) |
+| 4/5 Türkçe sözlük | `tr_TR.aff` ve `tr_TR.dic` indirilip klasöre konur |
+| 5/5 Yapay zekâ modelleri | RAM'ine göre önerilen set gösterilir; **E** dersen indirilir. 16 GB+ için standart (~25 GB), 8–12 GB için hafif (~12 GB) set |
+
+3. Sonunda "Uygulama şimdi açılsın mı?" sorusuna **E** de.
+
+Sonraki açılışlarda yalnızca **`baslat.bat`**'a çift tıkla. Kurulum yarıda kalırsa `kurulum.bat`'ı yeniden çalıştırman yeterli; kurulu olanlar atlanır.
+
+### Elle kurulum (macOS, Linux ya da her şeyi kendin kurmak istersen)
+
 Bilgisayarında şu dört şey kurulu olmalı:
 
 | Program | Ne işe yarar | Nereden |

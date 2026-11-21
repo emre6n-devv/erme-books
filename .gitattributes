@@ -1,0 +1,5 @@
+# Windows betikleri CRLF, kabuk betikleri LF satır sonuyla kalsın (ZIP indirmelerinde de)
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.sh  text eol=lf
+*.ttf binary

@@ -54,6 +54,24 @@ Uygulama bu tabloyu kullanarak, donanımına uyan en güçlü modeli kendisi se�
 
 ## Kurulum
 
+### ⚡ Tek tıkla kurulum (Windows)
+
+1. Bu sayfada yeşil **Code** düğmesine bas, **Download ZIP** de ve ZIP'i bir klasöre çıkar (örn. `C:\erme-books`).
+2. Klasördeki **`kurulum.bat`** dosyasına çift tıkla.
+
+Betik şunları kendisi yapar:
+- Node.js, Python ve Ollama'yı kontrol eder; eksikleri `winget` ile kurar.
+- Python paketlerini ve uygulama bağımlılıklarını kurar.
+- Türkçe sözlüğü indirir.
+- Bilgisayarının RAM'ine uygun model setini önerip onayınla indirir.
+- En sonda uygulamayı açar.
+
+Tekrar çalıştırmak güvenlidir; kurulu olanlar atlanır. Sonraki açılışlarda **`baslat.bat`** yeterli.
+
+> Windows "bilinmeyen yayıncı" uyarısı verirse **Ek bilgi → Yine de çalıştır** de. Modeller büyük olduğu için ilk kurulum internet hızına göre uzun sürebilir.
+
+macOS / Linux ya da elle kurmak istersen aşağıdaki adımları izle.
+
 ### 1. Gerekli programlar
 
 | | Windows | macOS | Linux (Ubuntu/Debian) |
