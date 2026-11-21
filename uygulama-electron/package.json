@@ -1,0 +1,20 @@
+{
+  "name": "kitap-ocr-studyosu",
+  "version": "2.0.0",
+  "description": "ERME BOOKS · Hayat Ağacı — taranmış Türkçe kitap PDF'lerini yerel yapay zekâ ile EPUB 3 e-kitaba dönüştüren masaüstü stüdyo",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^44.4.5"
+  },
+  "dependencies": {
+    "three": "^0.158.0"
+  },
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  }
+}

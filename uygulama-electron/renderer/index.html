@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>ERME BOOKS · Hayat Ağacı</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-season="sonbahar">
+
+<header class="topbar">
+  <div class="logo" title="Ana sayfa: hayat ağacı">
+    <div class="logo-mark">E</div>
+    <div><div class="logo-name">ERME BOOKS</div><div class="logo-sub">KİTAP STÜDYOSU</div></div>
+  </div>
+  <span class="top-sep"></span>
+  <div class="select-wrap"><select id="bookSelect" title="Çalışılan kitap"></select></div>
+  <button class="btn ghost" id="pickPdf"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15h6"/></svg>Yeni PDF</button>
+  <span class="grow"></span>
+  <button class="top-nav" id="homeBtn" data-tab="home" title="Hayat ağacı (ana sayfa)"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-7"/><path d="M9 22h6"/><path d="M12 15c-4.5 0-8-2.6-8-6.2C4 5.4 7.6 2 12 2s8 3.4 8 6.8c0 3.6-3.5 6.2-8 6.2z"/><path d="m12 15-3-3"/><path d="m12 12 3-2.5"/></svg><span>Ağaç</span></button>
+  <nav class="pipeline" id="pipeline">
+    <button data-tab="ocr"><i></i><span>OCR</span></button><b></b>
+    <button data-tab="editor"><i></i><span>Düzeltme</span></button><b></b>
+    <button data-tab="structure"><i></i><span>Yapı</span></button><b></b>
+    <button data-tab="cover"><i></i><span>Kapak</span></button><b></b>
+    <button data-tab="epub"><i></i><span>EPUB</span></button>
+  </nav>
+  <button class="top-nav" id="libBtn" data-tab="library" title="Kitaplık"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16"/><path d="M9 4v16"/><path d="m14 4 4 16"/><path d="M2 20h20"/></svg><span>Kitaplık</span></button>
+  <span class="top-sep"></span>
+  <div class="season-pick">
+    <button class="top-nav" id="seasonBtn" title="Mevsim"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg><span id="seasonBtnText">Sonbahar</span></button>
+    <div class="season-pop" id="seasonPop">
+      <div class="scene-wrap" id="sceneWrap"><canvas id="sceneCanvas"></canvas></div>
+      <div class="season-box">
+      <div class="sec-head">
+        <span class="sec-label">MEVSİM · <span id="seasonName">SONBAHAR</span></span>
+        <button class="today-btn" id="seasonToday" title="Bugünün mevsimine göre otomatik seç">↺ Bugün</button>
+      </div>
+      <div class="seg" id="seasonSeg">
+        <div class="seg-ind" id="segInd"></div>
+        <button data-s="kis">Kış</button><button data-s="ilkbahar">İlkbahar</button><button data-s="yaz">Yaz</button><button data-s="sonbahar">Sonbahar</button>
+      </div>
+    </div>
+    </div>
+  </div>
+  <label class="quality-pick" title="Grafik kalitesi: Otomatik modda kare hızı 35'in altına düşerse gölge, parçacık ve hayvan yoğunluğu kendiliğinden hafifletilir">
+    <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg>
+    <select id="qualitySel" aria-label="Grafik kalitesi"><option value="oto">Otomatik</option><option value="yuksek">Yüksek</option><option value="orta">Orta</option><option value="dusuk">Düşük</option></select>
+  </label>
+  <span class="ollama" id="ollamaBox" role="button" tabindex="0"><span class="dot" id="ollamaDot"></span><span id="ollamaText">Ollama kontrol ediliyor…</span></span>
+  <button class="btn ghost icon-only" id="refreshBooks" title="Kitap listesini yenile"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button>
+</header>
+
+<div class="layout">
+  <main class="flush">
+    <!-- 0 Ana sayfa: hayat ağacı -->
+    <section class="page active" id="page-home">
+      <div class="tree-wrap" id="treeWrap"><canvas id="treeCanvas"></canvas><div class="tree-labels"></div></div>
+      <div class="home-head">
+        <p class="kicker">ERME BOOKS · HAYAT AĞACI</p>
+        <h1 id="homeTitle">Hoş geldin</h1>
+        <p class="home-sub" id="homeSub"></p>
+        <div class="home-prog"><i id="homeBar"></i></div>
+        <div class="actions">
+          <button class="btn accent big" id="homeNext"></button>
+          <button class="btn ghost" id="homeIntro" title="Açılış animasyonunu tekrar oynat"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 4 13 8-13 8z"/></svg>Açılış</button>
+        </div>
+      </div>
+      <div class="season-dial" id="seasonDial">
+        <svg class="dial-arc" viewBox="0 0 360 120" aria-hidden="true"><g id="dialTicks"></g></svg>
+        <span class="dial-label" id="dialLabel">Sonbahar</span>
+        <div class="dial-orbs"><button class="orb" data-s="kis" title="Kış"><svg viewBox="0 0 40 40" aria-hidden="true"><path class="o-trunk" d="M19 34c0-6 1-9-1-13M21 34c0-5-1-8 2-12M18 22l-4-3M22 21l4-3"/><g class="o-crown"><circle cx="20" cy="15" r="7"/><circle cx="13" cy="18" r="5"/><circle cx="27" cy="18" r="5"/><circle cx="16" cy="11" r="4.5"/><circle cx="24" cy="11" r="4.5"/></g></svg></button><button class="orb" data-s="ilkbahar" title="İlkbahar"><svg viewBox="0 0 40 40" aria-hidden="true"><path class="o-trunk" d="M19 34c0-6 1-9-1-13M21 34c0-5-1-8 2-12M18 22l-4-3M22 21l4-3"/><g class="o-crown"><circle cx="20" cy="15" r="7"/><circle cx="13" cy="18" r="5"/><circle cx="27" cy="18" r="5"/><circle cx="16" cy="11" r="4.5"/><circle cx="24" cy="11" r="4.5"/></g></svg></button><button class="orb" data-s="yaz" title="Yaz"><svg viewBox="0 0 40 40" aria-hidden="true"><path class="o-trunk" d="M19 34c0-6 1-9-1-13M21 34c0-5-1-8 2-12M18 22l-4-3M22 21l4-3"/><g class="o-crown"><circle cx="20" cy="15" r="7"/><circle cx="13" cy="18" r="5"/><circle cx="27" cy="18" r="5"/><circle cx="16" cy="11" r="4.5"/><circle cx="24" cy="11" r="4.5"/></g></svg></button><button class="orb" data-s="sonbahar" title="Sonbahar"><svg viewBox="0 0 40 40" aria-hidden="true"><path class="o-trunk" d="M19 34c0-6 1-9-1-13M21 34c0-5-1-8 2-12M18 22l-4-3M22 21l4-3"/><g class="o-crown"><circle cx="20" cy="15" r="7"/><circle cx="13" cy="18" r="5"/><circle cx="27" cy="18" r="5"/><circle cx="16" cy="11" r="4.5"/><circle cx="24" cy="11" r="4.5"/></g></svg></button></div>
+      </div>
+      <p class="home-hint">Dallardaki kürelerin üstüne gel, adımı gör ve tıkla · Tepedeki kitap yığını: Kitaplık</p>
+      <!-- Ağacın kovuğundaki kütüphane (hollowLibrary3d.js) -->
+      <div class="hl-wrap" id="hollowWrap">
+        <canvas id="hollowCanvas"></canvas>
+        <div class="hl-label"></div>
+        <button class="hl-back" id="hlBack"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Ağaca dön</button>
+        <div class="hl-card"><div class="hl-cv"></div><div class="hl-tx"><b></b><span class="hl-au"></span><small class="hl-meta"></small><button></button></div></div>
+        <p class="hl-hint">Orta tuş: etrafa bak · Tekerlek: yaklaş · Sol tık: kitabı seç / tutup taşı · Sağ tık: vur · Arkadaki kemere tık: dışarı çık · EPUB sürükle-bırak: rafa ekle</p>
+      </div>
+    </section>
+    <!-- 1 OCR -->
+    <section class="page" id="page-ocr">
+      <header class="page-head"><span class="step-chip">ADIM 1 / 5</span><h1>OCR Tarama</h1><p class="lead">Sayfaların görüntüsü üç modelle okunur, okumalar kelime kelime birleştirilir.</p></header>
+      <p class="status" id="status-ocr"></p>
+      <div class="model-note" data-roles="ocr second third" hidden></div>
+      <div class="ocr-grid">
+        <div class="pdf-card">
+          <div class="pdf-view"><img id="pdfImg" alt=""><div class="pdf-empty" id="pdfEmpty">PDF önizlemesi</div>
+            <div class="pdf-live" id="pdfLive"></div></div>
+          <div class="pdf-nav">
+            <button class="icon-btn" id="pdfPrev">‹</button>
+            <span>Sayfa</span><input id="pdfPageInput" type="number" min="1" value="1"><span id="pdfCount">/ 0</span>
+            <button class="icon-btn" id="pdfNext">›</button>
+          </div>
+        </div>
+        <div class="side-col">
+          <div class="card opts">
+            <label class="switch"><input type="checkbox" id="ocrEnsemble"><span class="sw"></span>
+              <span><b>Üç model OCR</b><small>qwen2.5vl okur, GLM-OCR ikinci kez okur, gemma3 oy verir · ~3 kat yavaş, hataları ~%70 azaltır</small></span></label>
+            <label class="switch"><input type="checkbox" id="ocrTest"><span class="sw"></span>
+              <span><b>Hızlı deneme</b><small>Yalnız ilk 20 sayfa</small></span></label>
+          </div>
+          <div class="card ocr-sum" id="ocrSum" hidden></div>
+          <div class="progress has-book" id="prog-ocr" hidden>
+            <canvas class="prog-book"></canvas><div class="prog-main">
+            <div class="prog-top"><span class="prog-stage"></span><span class="prog-eta"></span></div>
+            <div class="prog-bar"><div class="prog-fill"></div></div>
+            <div class="prog-sub"></div>
+          </div></div>
+          <div class="actions">
+            <button class="btn accent big" id="ocr-chain" title="OCR (seçiliyse üç model) ve ardından Düzeltme, arka arkaya. Doğru metin EPUB'u varsa sonunda doğruluk da ölçülür."><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 4 10 8-10 8z"/><path d="M19 5v14"/></svg>Tam Zincir: OCR + Düzeltme</button>
+            <button class="btn plain start" id="ocr-start"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 4 13 8-13 8z"/></svg>Sadece OCR</button>
+            <button class="btn danger stop" id="ocr-stop" disabled><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>Durdur</button>
+          </div>
+          <p class="hint flat">Yarıda kalırsa tekrar başlat: okunan sayfalar atlanır, kaldığı yerden devam eder.</p>
+          <details class="logbox"><summary><span>Ayrıntılı günlük</span><span class="last-line"></span></summary><pre class="log" id="log-ocr"></pre></details>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 Düzeltme -->
+    <section class="page" id="page-editor">
+      <header class="page-head"><span class="step-chip">ADIM 2 / 5</span><h1>Düzeltme</h1><p class="lead">Sözlük, diğer modellerin okumaları ve yapay zekâ ile kalan hatalar ayıklanır.</p></header>
+      <p class="status" id="status-editor"></p>
+      <div class="model-note" data-roles="text" hidden></div>
+      <div class="stat-row" id="edStats"></div>
+      <div class="progress has-book" id="prog-editor" hidden>
+        <canvas class="prog-book"></canvas><div class="prog-main">
+        <div class="prog-top"><span class="prog-stage"></span><span class="prog-eta"></span></div>
+        <div class="prog-bar"><div class="prog-fill"></div></div>
+        <div class="prog-sub"></div>
+      </div></div>
+      <div class="actions">
+        <button class="btn accent big start" id="editor-start"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 4 13 8-13 8z"/></svg>Düzeltmeyi Başlat</button>
+        <button class="btn danger stop" id="editor-stop" disabled><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>Durdur</button>
+        <label class="switch inline"><input type="checkbox" id="editorTest"><span class="sw"></span><span><b>Hızlı deneme</b><small>Yalnız ilk 60 şüpheli kelime</small></span></label>
+        <span class="grow"></span>
+      </div>
+      <div class="ed-grid">
+        <section class="card list-card">
+          <div class="card-head"><h3>Değişiklikler</h3><span class="count" id="chgCount"></span><span class="grow"></span>
+            <button class="btn ghost icon-only" id="openChanges" title="Değişiklik dosyasını aç"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></button></div>
+          <div class="list-tools"><div class="chips" id="chgFilter"></div>
+            <label class="search"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input type="text" id="chgSearch" placeholder="Kelime ara…"></label></div>
+          <div class="chg-list" id="chgList"></div>
+        </section>
+        <section class="card list-card">
+          <div class="card-head"><h3>Elle bakılacaklar</h3><span class="count" id="revCount"></span><span class="grow"></span>
+            <button class="btn ghost icon-only" id="openReview" title="İnceleme dosyasını aç"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></button></div>
+          <div class="rev-list" id="revList"></div>
+        </section>
+      </div>
+      <details class="logbox"><summary><span>Ayrıntılı günlük</span><span class="last-line"></span></summary><pre class="log tall" id="log-editor"></pre></details>
+      <div class="card eval-box">
+        <div class="eval-head"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.3 8.7 8.7 21.3a1 1 0 0 1-1.4 0l-4.6-4.6a1 1 0 0 1 0-1.4L15.3 2.7a1 1 0 0 1 1.4 0l4.6 4.6a1 1 0 0 1 0 1.4z"/><path d="m7.5 10.5 2 2"/><path d="m10.5 7.5 2 2"/><path d="m13.5 4.5 2 2"/><path d="m4.5 13.5 2 2"/></svg><div><b>Doğruluk ölçümü</b><p class="hint flat" id="evalHint"></p></div></div>
+        <div class="acc-bars" id="accBars"></div>
+        <div class="actions">
+          <button class="btn plain" id="evalRun" disabled><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.3 8.7 8.7 21.3a1 1 0 0 1-1.4 0l-4.6-4.6a1 1 0 0 1 0-1.4L15.3 2.7a1 1 0 0 1 1.4 0l4.6 4.6a1 1 0 0 1 0 1.4z"/><path d="m7.5 10.5 2 2"/><path d="m10.5 7.5 2 2"/><path d="m13.5 4.5 2 2"/><path d="m4.5 13.5 2 2"/></svg>Doğruluğu Ölç</button>
+          <button class="btn plain" id="openReport" disabled><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>Raporu Aç</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3 Yapı -->
+    <section class="page" id="page-structure">
+      <header class="page-head"><span class="step-chip">ADIM 3 / 5</span><h1>Yapı &amp; Dizgi</h1><p class="lead">Kitabın adı, yazarı ve bölüm ağacı; seçtiğin dizgi şablonuyla e-kitap sayfası canlı önizlenir.</p>
+        <div class="tpl-seg" id="tplSeg" role="radiogroup" aria-label="Dizgi şablonu">
+          <button data-t="klasik" class="on" role="radio">ERME Klasik</button><button data-t="modern" role="radio">Modern Minimal</button><button data-t="genis" role="radio">Geniş Punto</button>
+        </div>
+      </header>
+      <p class="status" id="status-structure"></p>
+      <div class="model-note" data-roles="text" hidden></div>
+      <div class="struct-top">
+      <div class="card narrow-card struct-meta">
+        <div class="form-row"><label>Başlık</label><input type="text" id="structTitle"></div>
+        <div class="form-row"><label>Yazar</label><input type="text" id="structAuthor"></div>
+        <div class="actions">
+          <button class="btn accent" id="saveStruct"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>Kaydet</button>
+          <span class="grow"></span>
+          <button class="btn plain start" id="structure-start"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>Otomatik Tespit</button>
+          <button class="btn danger stop" id="structure-stop" disabled><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>Durdur</button>
+          <button class="btn plain" id="openYapi" title="Yapı dosyasını aç"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h4"/></svg>Yapı Dosyası</button>
+        </div>
+      </div>
+      </div>
+      <div class="toc-studio">
+        <section class="card toc-card">
+          <div class="card-head"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg><h3>Bölüm Ağacı</h3><span class="grow"></span><span class="toc-saved" id="tocSaved"></span></div>
+          <p class="toc-help toc-sum"><span id="tocCount"></span></p>
+          <ol class="toc-tree" id="tocList"></ol>
+          <p class="toc-help">Çift tık: yeniden adlandır · ← / →: seviye · sürükle: sırala · Del: sil</p>
+        </section>
+        <section class="card reader-card">
+          <div class="card-head"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2z"/><path d="M22 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8z"/></svg><h3>Sayfa Önizleme</h3>
+            <span class="grow"></span>
+            <button class="btn plain sm" id="tocAdd" disabled title="Önizlemede bir satır seç (veya metnin bir kısmını işaretle), sonra başlık yap">+ Başlık Ekle</button>
+            <button class="btn plain sm icon" id="pvPrev" title="Önceki bölüm">‹</button><button class="btn plain sm icon" id="pvNext" title="Sonraki bölüm">›</button></div>
+          <div class="reader-wrap"><div class="reader" id="readerHost"></div></div>
+          <p class="toc-help" id="pvHint">Bir paragrafa tıkla → "+ Başlık Ekle". Kısa satır başlığın kendisi olur; uzun paragrafın önüne yeni başlık eklenir.</p>
+        </section>
+      </div>
+      <details class="logbox"><summary><span>Ayrıntılı günlük</span><span class="last-line"></span></summary><pre class="log" id="log-structure"></pre></details>
+    </section>
+
+    <!-- 4 Kapak -->
+    <section class="page" id="page-cover">
+      <header class="page-head"><span class="step-chip">ADIM 4 / 5</span><h1>Kapak</h1><p class="lead">Kitabın temasına göre bez ciltli ERME BOOKS kapağı; tutup çevirerek önünü, sırtını ve arkasını incele.</p></header>
+      <p class="status" id="status-cover"></p>
+      <div class="model-note" data-roles="text" hidden></div>
+      <div class="cloth-grid">
+        <div class="card cloth-stage">
+          <canvas id="clothStage"></canvas>
+          <div class="cs-views"><button data-v="front">Ön</button><button data-v="spine">Sırt</button><button data-v="back">Arka</button></div>
+          <div class="cs-busy" id="clothBusy"><span class="spin"></span><b>Kitap analiz ediliyor…</b><small>Metin ve internet özeti okunuyor, yerel model tema çıkarıyor.</small></div>
+          <span class="cs-hint">tutup çevir · tekerlek: yaklaş</span>
+        </div>
+        <div class="card cloth-panel">
+          <div class="cp-tabs" role="tablist">
+            <button data-p="auto" class="on">Otomatik</button><button data-p="renk">Renkler</button><button data-p="motif">Motif &amp; Çerçeve</button><button data-p="yazi">Yazı &amp; Doku</button>
+          </div>
+          <div class="cp-body">
+            <section class="cp-pane on" data-p="auto">
+              <div class="cp-auto-actions">
+                <button class="btn accent" id="clothSuggest"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.9 5.8L20 10.7l-5.1 3.5L16.6 20 12 16.6 7.4 20l1.7-5.8L4 10.7l6.1-1.9z"/></svg>Kitaba Özel Öner</button>
+                <button class="btn plain" id="clothRegen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>Yeni Varyasyon</button>
+              </div>
+              <div class="theme-box" id="themeBox"></div>
+              <p class="hint">Diğer sekmelerde yaptığın seçimler otomatik önerinin üstüne yazılır. “Kitaba Özel Öner” hepsini sıfırlar ve kitabı yeniden analiz eder.</p>
+            </section>
+            <section class="cp-pane" data-p="renk">
+              <h4>Kumaş</h4>
+              <div id="clothGroups"></div>
+              <div class="cp-custom"><input type="color" id="clothPick" title="Özel renk"><input type="text" id="clothHex" maxlength="7" placeholder="#rrggbb"><span class="muted" id="clothName"></span></div>
+              <h4>Varak &amp; baskı</h4>
+              <div class="cp-chips" id="foilSel"></div>
+              <h4>Süs ve metin rengi</h4>
+              <div class="cp-ink"><button class="cp-chip" id="inkAuto"></button><input type="color" id="inkPick" title="Özel süs/metin rengi"><span class="muted" id="inkNote"></span></div>
+            </section>
+            <section class="cp-pane" data-p="motif">
+              <h4>Kenar motifi</h4>
+              <div id="motifGrid"></div>
+              <h4>Başlık kartuşu</h4>
+              <div class="cp-chips" id="cartSel"></div>
+            </section>
+            <section class="cp-pane" data-p="yazi">
+              <div class="form-row"><label>Başlık</label><input type="text" id="coverTitle"></div>
+              <div class="form-row"><label>Yazar</label><input type="text" id="coverAuthor"></div>
+              <h4>Başlık yazı tipi</h4>
+              <div class="cp-chips" id="fontSel"></div>
+              <h4>Cilt dokusu</h4>
+              <div class="cp-chips" id="texSel"></div>
+              <h4>Sırt kalınlığı <span class="muted" id="spineVal"></span></h4>
+              <div class="cp-range"><input type="range" id="spineIn" min="90" max="340" step="2"><button class="cp-chip" id="spineAuto">Otomatik</button></div>
+              <h4>Arka kapak yazısı</h4>
+              <textarea id="blurbIn" rows="6" placeholder="Arka kapak tanıtım yazısı"></textarea>
+            </section>
+          </div>
+          <div class="cp-foot">
+            <p class="reason" id="clothNote"></p>
+            <button class="btn accent" id="clothApprove"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Kapağı Onayla</button>
+          </div>
+        </div>
+      </div>
+      <details class="legacy-cover" id="legacyCover"><summary>Eski kapak: üç bantlı, maskotlu</summary>
+      <div class="cover-grid">
+        <div class="card form-card">
+          <p class="hint">İpucu: kitabın ve yazarın tam adını yaz, öneri sistemi bunları kitabın metniyle eşleştiriyor.</p>
+          <div class="form-row top"><label>Renk</label>
+            <div>
+              <div class="swatches" id="swatches"></div>
+              <div class="color-extra">
+                <input type="color" id="colorPicker" title="Diğer renkler">
+                <span class="muted">Renk kodu</span><input type="text" id="hexInput" placeholder="#rrggbb" maxlength="7">
+              </div>
+            </div>
+          </div>
+          <div class="form-row"><label>Hayvan</label><div class="select-wrap dark"><select id="animalSelect"></select></div></div>
+          <p class="warn" id="mascotWarn"></p>
+          <div class="actions">
+            <button class="btn plain start" id="cover-start"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="4" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="20" cy="16" r="2"/><path d="M9 10a5 5 0 0 1 5 5v3.5a3.5 3.5 0 0 1-6.84 1.05Q6.52 17.48 4.46 16.84A3.5 3.5 0 0 1 5.5 10Z"/></svg>Eksik Maskotları Üret</button>
+            <button class="btn danger stop" id="cover-stop" disabled><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>Durdur</button>
+          </div>
+          <pre class="log mini" id="log-cover" hidden></pre>
+          <div class="actions">
+            <button class="btn accent" id="coverGen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/><path d="M12 2a10 10 0 0 0 0 20c.9 0 1.7-.7 1.7-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.7 1.7-1.7H16a6 6 0 0 0 6-6c0-4.9-4.5-8.4-10-8.4z"/></svg>Kapağı Yenile</button>
+            <button class="btn plain" id="coverSuggest"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.9 5.8L20 10.7l-5.1 3.5L16.6 20 12 16.6 7.4 20l1.7-5.8L4 10.7l6.1-1.9z"/></svg>Bu Kitaba Göre Öner</button>
+          </div>
+          <p class="reason" id="coverReason"></p>
+        </div>
+        <div class="card cover-preview">
+          <div class="cover-frame"><canvas class="stage3d" id="coverStage"></canvas><img id="coverImg" alt=""><div class="pdf-empty" id="coverEmpty">(kapak henüz oluşturulmadı)</div>
+            <span class="drag-hint"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>tutup çevir</span></div>
+          <button class="btn plain" id="coverOpen" disabled><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>Tam Boyutta Aç</button>
+        </div>
+      </div>
+      </details>
+    </section>
+
+    <!-- 5 EPUB -->
+    <section class="page" id="page-epub">
+      <header class="page-head"><span class="step-chip">ADIM 5 / 5</span><h1>EPUB</h1><p class="lead">Her şey bir araya gelir: okunmaya hazır e-kitap.</p></header>
+      <p class="status" id="status-epub"></p>
+      <div class="epub-grid">
+        <div class="card epub-stage-card"><canvas class="stage3d" id="epubStage"></canvas><span class="drag-hint"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>tutup çevir</span></div>
+        <div class="epub-side">
+          <section class="card colophon">
+            <p class="kicker">ERME BOOKS · KÜNYE</p>
+            <h2 id="epTitle">—</h2><p class="ep-author" id="epAuthor"></p>
+            <dl class="ep-meta" id="epMeta"></dl>
+          </section>
+          <section class="card checks"><ul id="epChecks"></ul></section>
+          <div class="actions">
+            <button class="btn accent big start" id="epub-start"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>EPUB Oluştur</button>
+        <button class="btn danger stop" id="epub-stop" disabled><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>Durdur</button>
+        
+        
+        <button class="btn plain" id="openEpubFolder"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Klasör</button>
+          </div>
+          <section class="card ep-result" id="epDone" hidden>
+            <div class="er-cover" id="erCover"></div>
+            <div class="er-body">
+              <p class="kicker"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span id="erBadge">EPUB 3 hazır · doğrulandı</span></p>
+              <b class="er-name" id="erName"></b><small class="er-sub" id="erSub"></small>
+              <dl class="er-stats" id="erStats"></dl>
+              <div class="er-actions">
+                <button class="btn accent" id="erSave"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>Bilgisayara Kaydet (.epub)</button>
+                <button class="btn plain" id="erHollow"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16"/><path d="M9 4v16"/><path d="m14 4 4 16"/><path d="M2 20h20"/></svg>Kovuk Kütüphanesinde Gör</button>
+                <button class="btn plain" id="erRead"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>Uygulama İçinde Oku</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+      <details class="logbox"><summary><span>Ayrıntılı günlük</span><span class="last-line"></span></summary><pre class="log tall" id="log-epub"></pre></details>
+    </section>
+
+    <!-- Kitaplık -->
+    <section class="page" id="page-library">
+      <div class="lib-head">
+        <div><h1>Kitaplık</h1><p class="status" id="libStatus"></p></div>
+        <div class="actions">
+          <button class="btn accent" id="libAdd"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15h6"/></svg>EPUB Ekle</button>
+          <button class="btn plain" id="libFolder"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Klasör</button>
+        </div>
+      </div>
+      <div class="shelves" id="shelves"></div>
+      <p class="hint lib-hint">İpucu: Bir kitaba tıkla ya da sağ tıkla, raftan çıkıp kapağını göstersin. EPUB dosyalarını sürükleyip rafa bırakarak da ekleyebilirsin.</p>
+    </section>
+  </main>
+</div>
+
+<div class="modal" id="candModal">
+  <div class="modal-box">
+    <h2>Hangi kitap?</h2>
+    <p class="muted">Kitap kesin olarak eşleştirilemedi. Aşağıdakilerden biri mi?</p>
+    <div class="cand-list" id="candList"></div>
+    <div class="actions">
+      <button class="btn accent" id="candOk">Bu Kitap</button>
+      <button class="btn plain" id="candNone">Hiçbiri / Vazgeç</button>
+    </div>
+  </div>
+</div>
+
+<!-- Kitap görünümü: raftan çıkıp dönerek ön kapağını gösteren kitap + detaylar -->
+<div class="bv" id="bookView">
+  <div class="bv-backdrop" id="bvBackdrop"></div>
+  <div class="bv-stage" id="bvStage"></div>
+  <div class="bv-panel" id="bvPanel">
+    <p class="bv-kicker" id="bvKicker"></p>
+    <h2 id="bvTitle"></h2>
+    <p class="bv-author" id="bvAuthor"></p>
+    <dl class="bv-meta" id="bvMeta"></dl>
+    <p class="bv-desc" id="bvDesc"></p>
+    <div class="bv-actions">
+      <button class="btn accent" id="bdRead"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>Uygulamada Oku</button>
+      <button class="btn plain" id="bdOpen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>Dış Okuyucuda Aç</button>
+      <button class="btn plain" id="bdReveal"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Klasörde Göster</button>
+      <button class="btn plain" id="bdSelect"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Bu Kitapla Çalış</button>
+      <button class="btn plain bd-remove" id="bdRemove"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Kaldır</button>
+    </div>
+  </div>
+  <button class="modal-x bv-x" id="bdClose">✕</button>
+</div>
+
+<div class="toast" id="toast"></div>
+<!-- Model yönetimi: donanım ve yerel yapay zekâ modelleri -->
+<div class="modal mm-modal" id="modelModal">
+  <div class="modal-box mm-box">
+    <div class="mm-head"><h2>Model Yönetimi</h2><span class="grow"></span><button class="btn plain sm" id="mmRefresh" title="Donanımı ve kurulu modelleri yeniden kontrol et">↻ Yenile</button><button class="modal-x mm-x" id="mmClose" aria-label="Kapat">✕</button></div>
+    <div class="mm-sys" id="mmSys"></div>
+    <div class="mm-mode" role="radiogroup" aria-label="Seçim modu"><button data-m="otomatik">Otomatik · donanıma göre</button><button data-m="elle">Elle seç</button></div>
+    <div class="mm-roles" id="mmRoles"></div>
+    <div class="mm-foot" id="mmFoot"></div>
+  </div>
+</div>
+
+<!-- Uygulama içi e-kitap okuyucu -->
+<div class="reader-view" id="readerView" hidden>
+  <header class="rv-top">
+    <button class="btn plain sm" id="rvToc" title="İçindekiler (T)">☰ İçindekiler</button>
+    <div class="rv-title"><b id="rvTitle"></b><span id="rvAuthor"></span></div>
+    <div class="rv-tools"><button class="btn plain sm icon" id="rvSmaller" title="Yazıyı küçült (-)">A−</button><button class="btn plain sm icon" id="rvBigger" title="Yazıyı büyüt (+)">A+</button>
+      <button class="btn plain sm icon" id="rvClose" title="Kapat (Esc)">✕</button></div>
+  </header>
+  <aside class="rv-toc" id="rvTocPanel"><ol id="rvTocList"></ol></aside>
+  <div class="rv-stage" id="rvStage">
+    <button class="rv-nav prev" id="rvPrev" aria-label="Önceki sayfa">‹</button>
+    <div class="rv-page" id="rvPage"></div>
+    <button class="rv-nav next" id="rvNext" aria-label="Sonraki sayfa">›</button>
+  </div>
+  <footer class="rv-foot"><span id="rvWhere"></span><div class="rv-bar"><i id="rvBar"></i></div><span id="rvPageNo"></span></footer>
+  <div class="rv-busy" id="rvBusy"><span class="spin"></span><b>Kitap açılıyor…</b></div>
+</div>
+<script src="../node_modules/three/build/three.min.js"></script>
+<script src="quality.js"></script><script src="book3d.js"></script><script src="fauna2d.js"></script><script src="scenery3d.js"></script><script src="tree3d.js"></script><script src="hollowLibrary3d.js"></script><script src="coverGenerator.js"></script>
+<script src="scene.js"></script>
+<script src="renderer.js"></script>
+</body>
+</html>

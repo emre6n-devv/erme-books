@@ -1,0 +1,27 @@
+/* ERME BOOKS Modern Minimal — sade, havadar; başlıklar Montserrat, gövde Lora, sola yaslı */
+@font-face { font-family: "ERME Lora"; font-weight: normal; font-style: normal; src: url("../fonts/Lora-Regular.ttf"); }
+@font-face { font-family: "ERME Lora"; font-weight: bold; font-style: normal; src: url("../fonts/Lora-Bold.ttf"); }
+@font-face { font-family: "ERME Lora"; font-weight: normal; font-style: italic; src: url("../fonts/Lora-Italic.ttf"); }
+@font-face { font-family: "ERME Lora"; font-weight: bold; font-style: italic; src: url("../fonts/Lora-BoldItalic.ttf"); }
+@font-face { font-family: "ERME Montserrat"; font-weight: normal; font-style: normal; src: url("../fonts/Montserrat-Medium.ttf"); }
+@font-face { font-family: "ERME Montserrat"; font-weight: bold; font-style: normal; src: url("../fonts/Montserrat-SemiBold.ttf"); }
+
+body { font-family: "ERME Lora", Georgia, serif; font-size: 0.98em; line-height: 1.62; margin: 0 5%; color: #1f1f1f; widows: 2; orphans: 2; }
+p { margin: 0; text-indent: 1.2em; text-align: left; -webkit-hyphens: auto; -epub-hyphens: auto; hyphens: auto; }
+p.first, p.no-indent { text-indent: 0; }
+.chapter { page-break-before: always; break-before: page; }
+.chapter-head { margin: 18% 0 2.6em; text-align: left; page-break-after: avoid; }
+.chapter-head .label { font-family: "ERME Montserrat", Arial, sans-serif; font-size: 0.68em; letter-spacing: 0.3em; text-transform: uppercase; color: #8a8a8a; margin: 0 0 1.2em; text-indent: 0; }
+h2.chapter-title { font-family: "ERME Montserrat", Arial, sans-serif; font-weight: normal; font-size: 1.25em; line-height: 1.35; letter-spacing: 0.16em; text-transform: uppercase; margin: 0; color: #222; }
+.orn { display: block; width: 2.5em; border-top: 2px solid #222; margin: 1.2em 0 0; font-size: 0; line-height: 0; height: 0; text-indent: 0; }
+.part { page-break-before: always; break-before: page; page-break-after: always; text-align: left; }
+.part .label { font-family: "ERME Montserrat", Arial, sans-serif; font-size: 0.7em; letter-spacing: 0.35em; text-transform: uppercase; color: #8a8a8a; margin: 40% 0 1em; text-indent: 0; }
+h1.part-title { font-family: "ERME Montserrat", Arial, sans-serif; font-weight: bold; font-size: 1.7em; letter-spacing: 0.12em; text-transform: uppercase; margin: 0; }
+h3.section-title { font-family: "ERME Montserrat", Arial, sans-serif; font-weight: bold; font-size: 0.85em; letter-spacing: 0.18em; text-transform: uppercase; margin: 2.2em 0 1em; color: #333; page-break-after: avoid; }
+.front h2.chapter-title { letter-spacing: 0.1em; }
+p.scene { text-align: center; text-indent: 0; margin: 1.2em 0; letter-spacing: 0.6em; color: #999; }
+.titlepage { text-align: left; page-break-after: always; }
+.titlepage h1 { font-family: "ERME Montserrat", Arial, sans-serif; font-weight: bold; font-size: 1.9em; letter-spacing: 0.12em; text-transform: uppercase; margin: 35% 0 0.3em; }
+.titlepage .author { font-family: "ERME Lora", Georgia, serif; font-style: italic; font-size: 1.15em; color: #555; text-indent: 0; }
+.titlepage .imprint { font-family: "ERME Montserrat", Arial, sans-serif; font-size: 0.65em; letter-spacing: 0.4em; margin-top: 50%; color: #999; text-indent: 0; }
+nav#toc ol { list-style: none; padding-left: 0; } nav#toc ol ol { padding-left: 1.4em; } nav#toc li { margin: 0.35em 0; } nav#toc a { color: inherit; text-decoration: none; }

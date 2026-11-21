@@ -1,0 +1,28 @@
+/* ERME BOOKS Geniş Punto / Rahat Okuma — büyük punto, geniş satır aralığı, sola yaslı, tiresiz */
+@font-face { font-family: "ERME Lora"; font-weight: normal; font-style: normal; src: url("../fonts/Lora-Regular.ttf"); }
+@font-face { font-family: "ERME Lora"; font-weight: bold; font-style: normal; src: url("../fonts/Lora-Bold.ttf"); }
+@font-face { font-family: "ERME Lora"; font-weight: normal; font-style: italic; src: url("../fonts/Lora-Italic.ttf"); }
+@font-face { font-family: "ERME Lora"; font-weight: bold; font-style: italic; src: url("../fonts/Lora-BoldItalic.ttf"); }
+@font-face { font-family: "ERME Crimson"; font-weight: normal; font-style: normal; src: url("../fonts/CrimsonText-Regular.ttf"); }
+@font-face { font-family: "ERME Crimson"; font-weight: normal; font-style: italic; src: url("../fonts/CrimsonText-Italic.ttf"); }
+@font-face { font-family: "ERME Crimson"; font-weight: bold; font-style: normal; src: url("../fonts/CrimsonText-SemiBold.ttf"); }
+
+body { font-family: "ERME Lora", Georgia, serif; font-size: 1.22em; line-height: 1.85; margin: 0 3%; color: #111; widows: 2; orphans: 2; }
+p { margin: 0 0 0.45em; text-indent: 1.2em; text-align: left; -webkit-hyphens: none; hyphens: none; }
+p.first, p.no-indent { text-indent: 0; }
+.chapter { page-break-before: always; break-before: page; }
+.chapter-head { margin: 14% 0 2em; text-align: center; page-break-after: avoid; }
+.chapter-head .label { font-family: "ERME Crimson", Georgia, serif; font-size: 0.8em; letter-spacing: 0.25em; text-transform: uppercase; color: #6a5a4a; margin: 0 0 0.7em; text-indent: 0; text-align: center; }
+h2.chapter-title { font-family: "ERME Crimson", Georgia, serif; font-weight: bold; font-size: 1.7em; line-height: 1.25; margin: 0; color: #1a1410; }
+.orn { font-family: "ERME Crimson", Georgia, serif; text-align: center; text-indent: 0; color: #6a5a4a; font-size: 1.3em; margin: 0.6em 0 0; }
+.part { page-break-before: always; break-before: page; page-break-after: always; text-align: center; }
+.part .label { font-family: "ERME Crimson", Georgia, serif; font-size: 0.85em; letter-spacing: 0.3em; text-transform: uppercase; color: #6a5a4a; margin: 30% 0 1em; text-indent: 0; text-align: center; }
+h1.part-title { font-family: "ERME Crimson", Georgia, serif; font-weight: bold; font-size: 2.1em; margin: 0; }
+h3.section-title { font-family: "ERME Crimson", Georgia, serif; font-weight: bold; font-size: 1.3em; text-align: center; margin: 1.8em 0 0.8em; page-break-after: avoid; }
+.front h2.chapter-title { font-style: italic; font-weight: normal; }
+p.scene { text-align: center; text-indent: 0; margin: 1em 0; letter-spacing: 0.6em; color: #6a5a4a; }
+.titlepage { text-align: center; page-break-after: always; }
+.titlepage h1 { font-family: "ERME Crimson", Georgia, serif; font-weight: bold; font-size: 2.3em; margin: 25% 0 0.3em; }
+.titlepage .author { font-family: "ERME Crimson", Georgia, serif; font-style: italic; font-size: 1.3em; text-indent: 0; text-align: center; }
+.titlepage .imprint { font-family: "ERME Crimson", Georgia, serif; font-size: 0.8em; letter-spacing: 0.35em; margin-top: 40%; color: #6a5a4a; text-indent: 0; text-align: center; }
+nav#toc ol { list-style: none; padding-left: 0; } nav#toc ol ol { padding-left: 1.2em; } nav#toc li { margin: 0.45em 0; } nav#toc a { color: inherit; text-decoration: none; }

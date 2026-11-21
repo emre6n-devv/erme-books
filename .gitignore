@@ -1,0 +1,35 @@
+# Bağımlılıklar ve derleme çıktıları
+node_modules/
+dist/
+out/
+__pycache__/
+*.pyc
+
+# Gizli ayarlar
+.env
+.env.*
+
+# Kişisel kitaplar ve üretilen dosyalar (klasörler .gitkeep ile kalır)
+*.epub
+*.pdf
+input/*
+output/*
+epubs/*
+!input/.gitkeep
+!output/.gitkeep
+!epubs/.gitkeep
+assets/mascots/*
+!assets/mascots/.gitkeep
+
+# Büyük sözlük dosyaları (README'deki adresten indirilir)
+tr_TR.aff
+tr_TR.dic
+eski sözlükler/
+
+# Yedekler ve sistem dosyaları
+yedek/
+_arsiv_gereksiz_dosyalar/
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini

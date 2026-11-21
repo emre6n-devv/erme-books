@@ -1,0 +1,8 @@
+pymupdf
+requests
+pillow
+ebooklib
+lxml
+numpy
+scipy
+spylls
