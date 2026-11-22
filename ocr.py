@@ -417,6 +417,7 @@ def process_pdf(pdf_path: Path, output_dir: Path, max_pages, start_page: int, au
         except (ValueError, OSError):
             pass
 
+    t_okuma, n_okunan = time.time(), 0
     with open(output_md, mode, encoding="utf-8") as f:
         for i in range(start_page, end_page):
             if resume_store is not None and str(i) in page_store["pages"]:
@@ -437,9 +438,17 @@ def process_pdf(pdf_path: Path, output_dir: Path, max_pages, start_page: int, au
             f.write(text.strip() + "\n\n")
             f.flush()
             page_store["pages"][str(i)] = text.strip()
+            n_okunan += 1
             pages_json.write_text(json.dumps(page_store, ensure_ascii=False), encoding="utf-8")
             elapsed = time.time() - t0
             print(f"  Sayfa {i + 1}/{total_pages} tamamlandı [{used_mode}] ({elapsed:.1f}sn)")
+
+    if n_okunan:
+        try:   # süre tahmini (sure_tahmini.py) bu bilgisayarın gerçek hızını öğrensin
+            from sure_tahmini import sure_kaydet
+            sure_kaydet("ocr", VISION_MODEL, n_okunan, time.time() - t_okuma)
+        except Exception:
+            pass
 
     full_text = output_md.read_text(encoding="utf-8")
     cleaned = dehyphenate(full_text)
@@ -456,6 +465,31 @@ def process_pdf(pdf_path: Path, output_dir: Path, max_pages, start_page: int, au
     return output_md
 
 
+def katman_dene(pdf_path: Path, max_pages=None) -> bool:
+    """PDF'in metin katmanı sağlamsa kitabı ondan çıkarır (hafif_ocr.py --kaynak katman-varsa).
+    Dijital PDF'lerde bu saniyeler sürer ve OCR'dan daha doğrudur; bozuk bağlı harfler sözlükle onarılır,
+    eski/kötü OCR katmanları reddedilir. True: kitap katmandan yazıldı, vision OCR gerekmiyor."""
+    import subprocess
+    betik = Path(__file__).with_name("hafif_ocr.py")
+    if not betik.exists():
+        return False
+    print("=== Metin katmanı denetimi (sağlamsa OCR gerekmez) ===", flush=True)
+    komut = [sys.executable, str(betik), "--file", pdf_path.name, "--kaynak", "katman-varsa"]
+    if max_pages:
+        komut += ["--max-pages", str(max_pages)]
+    try:
+        kod = subprocess.run(komut).returncode
+    except OSError as e:
+        print(f"  [UYARI] Metin katmanı denenemedi: {e}")
+        return False
+    if kod == 0:
+        print(f"Bitti (metin katmanından): {pdf_path.name}")
+        return True
+    if kod != 10:
+        print(f"  [UYARI] Metin katmanı denetimi hata verdi (kod {kod}); sayfalar OCR ile okunacak.")
+    return False
+
+
 def main():
     parser = argparse.ArgumentParser(description="Yerel Ollama ile PDF -> Markdown OCR/düzeltme")
     parser.add_argument("--file", type=str, default=None,
@@ -468,6 +502,8 @@ def main():
                          help="Daha önce okunmuş sayfaları atla, kaldığı yerden devam et (sayfa kaydı _sayfalar.json'dan)")
     parser.add_argument("--no-auto-headers", action="store_true",
                          help="Otomatik üstbilgi/altbilgi tespitini kapat, sadece config.KNOWN_HEADERS kullan")
+    parser.add_argument("--no-katman", action="store_true",
+                         help="PDF'in metin katmanını deneme, her sayfayı vision modeliyle oku")
     args = parser.parse_args()
 
     input_dir = Path(config.INPUT_DIR)
@@ -486,6 +522,8 @@ def main():
             sys.exit(1)
 
     for pdf_path in pdf_files:
+        if not args.no_katman and args.start_page == 0 and katman_dene(pdf_path, args.max_pages):
+            continue
         process_pdf(pdf_path, output_dir, args.max_pages, args.start_page, auto_headers=not args.no_auto_headers,
                     resume=args.resume)
 

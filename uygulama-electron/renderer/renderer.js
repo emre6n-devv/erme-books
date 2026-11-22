@@ -70,6 +70,7 @@ function showTab(tab) {
   // Kitaplık: ağacın kovuğundaki 360° kütüphane (ana sayfanın üstünde açılır)
   if (tab === 'library' && window.HollowLibrary) { if (!$('page-home').classList.contains('active')) showTab('home'); requestAnimationFrame(() => enterHollow()); return; }
   if (hollowLib?.active) exitHollow();
+  if (window.SecondaryApp?.isOpen) window.SecondaryApp.close(true);
   document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.tab === tab));
   document.querySelectorAll('.page').forEach((p) => p.classList.toggle('active', p.id === `page-${tab}`));
   document.querySelectorAll('#pipeline button').forEach((b) => b.classList.toggle('cur', b.dataset.tab === tab));
@@ -194,7 +195,8 @@ function progRender(tab) {
   const left = p.total ? fmtDur(avg * (p.total - p.done)) : '';
   box.querySelector('.prog-eta').textContent = left ? `bu adımda ~${left} kaldı` : '';
   const counter = p.total && !p.indet ? `${p.done}/${p.total}` : '';
-  box.querySelector('.prog-sub').textContent = [counter, p.sub, `geçen süre ${fmtDur((Date.now() - p.t0) / 1000) || '< 1 dk'}`].filter(Boolean).join(' · ');
+  const perPage = avg && p.total && !p.indet ? `sayfa başı ~${Math.round(avg)} sn` : '';
+  box.querySelector('.prog-sub').textContent = [counter, perPage, p.sub, `geçen süre ${fmtDur((Date.now() - p.t0) / 1000) || '< 1 dk'}`].filter(Boolean).join(' · ');
 }
 function progEnd(tab, ok, text) {
   const p = prog[tab], box = $(`prog-${tab}`); if (!p) return;
@@ -280,7 +282,7 @@ async function refreshStatus() {
   const refName = state.evalRef ? state.evalRef.split(/[\\/]/).pop() : '';
   $('evalHint').textContent = state.evalRef
     ? `Bu kitabın doğru metni bulundu (${refName}). Çıktıyı onunla karşılaştırıp hata oranını ölçebilirsin.`
-    : 'Doğruluk ölçümü için kitabın aynı baskısının EPUB\'ı epubs/ klasöründe olmalı. Normal kitaplarda gerekmez.';
+    : 'Doğruluk ölçümü için kitabın aynı baskısının EPUB\'ı epubs/ornekler/ klasöründe olmalı. Normal kitaplarda gerekmez.';
   $('evalRun').disabled = !!state.running || !state.evalRef;
   $('openReport').disabled = !e.report;
 
@@ -352,14 +354,16 @@ async function checkReady(tab, needs) {
   const log = (t) => { $(`log-${tab}`).hidden = false; $(`log-${tab}`).textContent = t; openLog(tab); };
   if (!s.up) {
     log('Ollama çalışmıyor.\n\nBaşlat menüsünden Ollama uygulamasını aç (sağ altta lama simgesi görünmeli)\nya da bir terminalde "ollama serve" yazıp o pencereyi açık bırak. Sonra tekrar başlat.');
-    toast('Ollama kapalı. Önce Ollama uygulamasını aç.', true);
+    toast('Yapay zekâ motoru (Ollama) kapalı. Kurulum Sihirbazı açıldı.', true);
+    openSetup();
     return false;
   }
   const have = new Set((s.models || []).flatMap((m) => [m, m.replace(/:latest$/, '')]));
   const missing = needs.map((k) => req[k]).filter((m) => m && !have.has(m));
   if (missing.length) {
-    log('Eksik model var, önce kurulması gerekiyor. Bir terminalde şunları çalıştır:\n\n' + missing.map((m) => `  ollama pull ${m}`).join('\n'));
-    toast(`Eksik model: ${missing.join(', ')}`, true);
+    log('Eksik model var. Kurulum Sihirbazı açıldı; "Seçilenleri İndir" ile indirebilirsin.\n(İstersen terminalde de kurabilirsin:)\n\n' + missing.map((m) => `  ollama pull ${m}`).join('\n'));
+    toast(`Eksik model: ${missing.join(', ')}. Kurulum Sihirbazı'ndan indirebilirsin.`, true);
+    openSetup({ preselect: missing });
     return false;
   }
   return true;
@@ -367,8 +371,16 @@ async function checkReady(tab, needs) {
 
 // Çoklu okuma, Model Yönetimi'nde ikinci okuma kapalıysa atlanır; oy modeli kapalıysa yalnız iki okuma birleştirilir.
 const roleOn = (k) => !state.models || !!state.models.roles[k]?.secili;
-const multiOcr = () => $('ocrEnsemble').checked && roleOn('second');
+// "Hızlı · işlemci" okuyucu seçiliyse: hafif_ocr.py (metin katmanı / Tesseract); şüpheli satırları ikinci okuma modeli okur.
+const hafifOcr = () => state.models?.roles.ocr.secili === 'hafif';
+const multiOcr = () => $('ocrEnsemble').checked && roleOn('second') && !hafifOcr();
 function ocrSteps() {
+  if (hafifOcr()) {
+    const args = ['hafif_ocr.py', '--file', `${state.slug}.pdf`];
+    if ($('ocrTest').checked) args.push('--max-pages', '20');
+    if (roleOn('second')) args.push('--vlm-model', state.models.roles.second.secili); else args.push('--no-vlm');
+    return [{ label: 'OCR: hızlı (metin katmanı / Tesseract)', args }];
+  }
   const ocrArgs = ['ocr.py', '--file', `${state.slug}.pdf`, '--resume'];
   if ($('ocrTest').checked) ocrArgs.push('--max-pages', '20');
   const steps = [{ label: `OCR: ${state.models?.roles.ocr.secili || 'ana model'}`, args: ocrArgs }];
@@ -379,11 +391,86 @@ function ocrSteps() {
   }
   return steps;
 }
-const ocrNeeds = () => (multiOcr() ? ['ocr', 'second', ...(roleOn('third') ? ['third'] : [])] : ['ocr']);
+const ocrNeeds = () => (hafifOcr() ? [] : multiOcr() ? ['ocr', 'second', ...(roleOn('third') ? ['third'] : [])] : ['ocr']);   // hızlı okuyucu modelsiz de çalışır
+
+// ---------- Okuma profili ----------
+// OCR başlamadan önce her profilin (Çok hızlı / Hafif / Standart / Güçlü) bu kitapta, bu bilgisayarda süresi,
+// tahmini hatası ve durumu gösterilir (sure_tahmini.py). Önce hızlı tahmin gelir; PDF'in metin katmanı arka planda
+// sınanır, sağlamsa süreler güncellenir. Seçilen profil Model Yönetimi'ne uygulanır.
+const prof = { veri: null, secili: '', sinandi: false, bitir: null };
+function profCiz() {
+  const d = prof.veri;
+  const k = $('profKatman');
+  if (!d) { $('profList').innerHTML = '<div class="empty-note">Süreler hesaplanıyor…</div>'; return; }
+  if (d.error) { $('profList').innerHTML = `<div class="empty-note">${escapeHtml(d.error)}</div>`; $('profOk').disabled = true; return; }
+  $('profSub').textContent = `${state.slug} · ${d.sayfa} sayfa · bu bilgisayarda tahmini süreler`;
+  const kt = d.katman || {};
+  k.className = 'prof-katman';
+  if (!prof.sinandi && kt.var) { k.classList.add('bekle'); k.textContent = 'PDF\'te metin katmanı var, sağlamlığı denetleniyor…'; }
+  else if (kt.saglam) { k.classList.add('iyi'); k.textContent = '✓ PDF\'in kendi metni sağlam: OCR gerekmez, hangi profili seçersen seç birkaç dakikada biter.'; }
+  else if (kt.var) k.textContent = `Metin katmanı kullanılamıyor: ${kt.aciklama || 'denetlenemedi'}. Sayfalar OCR ile okunacak.`;
+  else k.textContent = 'Taranmış kitap: sayfalar OCR ile okunacak.';
+  if (!prof.secili || !d.profiller.some((p) => p.id === prof.secili && p.calisir)) prof.secili = d.oneri;
+  $('profList').innerHTML = d.profiller.map((p) => {
+    const uyari = p.uyarilar.filter((u) => !/metin katmanından/.test(u));
+    const indir = p.indirilecek.map((e) => `${e.model}${e.boyut_gb ? ` (~${String(e.boyut_gb).replace('.', ',')} GB)` : ''}`);
+    return `<button class="prof-opt${p.id === prof.secili ? ' on' : ''}" data-id="${p.id}"${p.calisir ? '' : ' disabled'}>
+      <i></i><span class="prof-ad">${escapeHtml(p.ad)}${p.onerilen ? '<em>önerilen</em>' : ''}</span>
+      <span class="prof-sure">${escapeHtml(p.sure_yazi)}</span>
+      <span class="prof-alt">${escapeHtml(p.aciklama)}<br>Tahmini hata: <b>${escapeHtml(p.hata)}</b>${p.guven === 'ölçülmüş' ? ' · süre bu bilgisayarda ölçülmüş' : ''}</span>
+      ${uyari.length ? `<span class="prof-uyari">${escapeHtml(uyari.join(' · '))}</span>` : ''}
+      ${indir.length ? `<span class="prof-indir">İndirilecek: ${escapeHtml(indir.join(', '))}</span>` : ''}
+    </button>`;
+  }).join('');
+  $('profOk').disabled = !d.profiller.some((p) => p.id === prof.secili && p.calisir);
+}
+function profKapat(sonuc) {
+  $('profModal').classList.remove('show');
+  const b = prof.bitir; prof.bitir = null;
+  if (b) b(sonuc);
+}
+// Pencereyi açar; seçilen profil uygulanınca true, vazgeçilirse false döner.
+function profilSec() {
+  if (prof.bitir) return Promise.resolve(false);
+  prof.veri = null; prof.sinandi = false;
+  $('profSub').textContent = 'Süreler hesaplanıyor…';
+  $('profKatman').textContent = ''; $('profOk').disabled = true;
+  profCiz();
+  $('profModal').classList.add('show');
+  const slug = state.slug;
+  const sonuc = new Promise((res) => { prof.bitir = res; });
+  api.sureTahmin(slug, false).then((d) => { if (prof.bitir && !prof.sinandi && slug === state.slug) { prof.veri = d; profCiz(); } });
+  api.sureTahmin(slug, true).then((d) => {
+    if (!prof.bitir || slug !== state.slug) return;
+    prof.sinandi = true;
+    if (d && !d.error) prof.veri = d;
+    profCiz();
+  });
+  return sonuc;
+}
+$('profList').addEventListener('click', (e) => {
+  const b = e.target.closest('.prof-opt'); if (!b || b.disabled) return;
+  prof.secili = b.dataset.id; profCiz();
+});
+$('profOk').addEventListener('click', async () => {
+  const p = prof.veri?.profiller?.find((x) => x.id === prof.secili);
+  if (!p || !p.calisir) return;
+  $('profOk').disabled = true;
+  state.models = await api.setModels({ mode: 'elle', manual: p.app });
+  $('ocrEnsemble').checked = !!p.ucluk;
+  localStorage.setItem('ocrEnsemble', p.ucluk ? '1' : '0');
+  pollOllama();
+  toast(`Okuma profili: ${p.ad}`);
+  profKapat(true);
+});
+$('profCancel').addEventListener('click', () => profKapat(false));
+$('profModal').addEventListener('click', (e) => { if (e.target === $('profModal')) profKapat(false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && prof.bitir) profKapat(false); });
 
 $('ocr-start').addEventListener('click', async () => {
   if (!requireBook()) return;
   if (!state.st.exists.pdf) return toast('Bu kitabın PDF dosyası input/ klasöründe yok.', true);
+  if (!(await profilSec())) return;
   if (!(await checkReady('ocr', ocrNeeds()))) return;
   const steps = ocrSteps();
   progStart('ocr', steps.length === 1 ? 1 : 3);
@@ -397,6 +484,7 @@ $('ocr-start').addEventListener('click', async () => {
 $('ocr-chain').addEventListener('click', async () => {
   if (!requireBook()) return;
   if (!state.st.exists.pdf) return toast('Bu kitabın PDF dosyası input/ klasöründe yok.', true);
+  if (!(await profilSec())) return;
   if (!(await checkReady('ocr', [...ocrNeeds(), 'editor']))) return;
   const md = state.st.paths.md;
   const steps = [...ocrSteps(), { label: 'Düzeltme (editör)', args: ['editor.py', '--input', md, '--book', state.slug] }];
@@ -427,7 +515,7 @@ $('editor-start').addEventListener('click', async () => {
   });
 });
 
-// Doğruluk ölçümü: sadece kitabın "doğru metni" olan bir EPUB epubs/ klasöründe varsa
+// Doğruluk ölçümü: sadece kitabın "doğru metni" olan bir EPUB epubs/ornekler/ klasöründe varsa
 $('evalRun').addEventListener('click', () => {
   if (!requireBook() || !state.evalRef) return;
   if (!state.st.exists.md) return toast('Ölçülecek çıktı yok. Önce OCR adımını çalıştır.', true);
@@ -1144,7 +1232,9 @@ let tree = null, introDone = false;
 const STEP_NAMES = { ocr: 'OCR Tarama', editor: 'Düzeltme', structure: 'Yapı & Dizgi', cover: 'Kapak', epub: 'EPUB' };
 function ensureTree() {
   if (tree || !introDone || !window.TreeHome) return;
-  tree = window.TreeHome.attach($('treeWrap'), { onPick: (tab) => showTab(tab), onHollow: enterHollow });
+  tree = window.TreeHome.attach($('treeWrap'), { onPick: (tab) => showTab(tab), onHollow: enterHollow,
+    // mevsimin gizli geçidi: ikinci uygulamanın bağlantı noktası (secondaryAppBridge.js); "Ağaca Dön" kamerayı geri süzer
+    onPortal: (ctx) => (window.openSecondaryApp ? window.openSecondaryApp({ ...ctx, onReturn: () => tree && tree.reset() }) : tree.reset()) });
   if (tree) { tree.setSeason(document.body.dataset.season); updateHome(); }
 }
 // ---------- ağacın kovuğundaki kütüphane ----------
@@ -1156,6 +1246,7 @@ async function enterHollow(focus) {   // focus: rafta öne çıkarılacak kitap 
     onCovered: () => tree && tree.setPaused(true),
     onExit: () => { if (tree) { tree.setPaused(false); tree.reset(); } },
     onOpen: openFromHollow,
+    canKey: () => !bv && $('setupView').hidden && !$('modelModal').classList.contains('show') && !$('readerView').classList.contains('show'),
   });
   if (!hollowLib) { showTab('library'); return; }
   if (hollowLib.active) { if (typeof focus === 'string') hollowLib.focus(focus); return; }
@@ -1185,7 +1276,10 @@ async function hollowBooks() {
   }); }
 function exitHollow() { if (hollowLib && hollowLib.active) hollowLib.exit(); }
 $('hlBack').addEventListener('click', exitHollow);
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && hollowLib?.active && !bv) exitHollow(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !hollowLib?.active || bv || !$('setupView').hidden || $('modelModal').classList.contains('show')) return;
+  if (!hollowLib.escape()) exitHollow();   // önce havadaki kitap / çağrılan kitap / seçili merdiven bırakılır
+});
 function openFromHollow(b) {
   if (b.kind === 'project') {   // proje: kütüphaneden çık, kitabı seç, sıradaki adıma git
     exitHollow();
@@ -1638,13 +1732,153 @@ function renderModelNotes() {
     el.querySelector('.mn-go').addEventListener('click', openModelPanel);
   });
 }
-function openModelPanel() { $('modelModal').classList.add('show'); renderModelPanel(); }
+// Tarama kalitesi: sayfa çözünürlüğü + bağlam penceresi. Otomatikte donanıma göre seçilir, OCR sırasında
+// model ekran kartına sığmazsa bir kademe düşürülür ve kullanıcıya haber verilir.
+function scanSection(sc) {
+  if (!sc) return '';
+  const src = sc.kaynak === 'elle' ? 'elle seçildi' : sc.kaynak === 'olcum' ? `ölçüme göre düşürüldü: ${sc.neden}` : sc.neden;
+  return `<section class="mm-role mm-scan"><h4>Tarama kalitesi <small>sayfa çözünürlüğü · okuyucunun ekran kartında kapladığı yer</small></h4>
+    <button class="mm-opt${sc.mode === 'otomatik' ? ' on' : ''}" data-scan="otomatik"><i></i><span class="mm-name">Otomatik <em>önerilen</em></span>
+      <span class="mm-ram">${sc.mode === 'otomatik' ? `şu an: ${escapeHtml(sc.ad)} · ${escapeHtml(src)}` : `donanıma göre: ${escapeHtml(sc.levels.find((l) => l.id === sc.donanim.level).ad)}`}</span></button>
+    ${sc.levels.map((l) => `<button class="mm-opt${sc.mode === 'elle' && sc.level === l.id ? ' on' : ''}" data-scan="${l.id}"><i></i>
+      <span class="mm-name">${escapeHtml(l.ad)}${sc.level === l.id ? ' <em>kullanılıyor</em>' : ''}</span>
+      <span class="mm-ram">${l.dpi} DPI · bağlam ${l.ctx.toLocaleString('tr-TR')}</span><span class="mm-err">${escapeHtml(l.kim)}</span>
+      <span class="mm-scan-note">${escapeHtml(l.not)}</span></button>`).join('')}
+    <p class="muted mm-scan-p">Otomatikte, ilk sayfa okunduktan sonra okuyucu modelin ekran kartına tamamen sığıp sığmadığı ölçülür; sığmıyorsa bir kademe düşürülür ve sana haber verilir. Elle seçersen ayar sabit kalır.</p></section>`;
+}
+// Kalıcı bildirim kartı: ayar otomatik değiştiğinde kullanıcı görmeden kaybolmasın, geri alabilsin
+function scanNotice(d) {
+  let el = $('scanNotice');
+  if (!el) { el = document.createElement('div'); el.id = 'scanNotice'; el.className = 'scan-notice'; el.setAttribute('role', 'alert'); document.body.appendChild(el); }
+  const head = d.noGpu ? 'Okuyucu model ekran kartını kullanmıyor' : `Okuyucu model ekran kartına sığmadı (%${d.cpuPct} kadarı işlemcide)`;
+  const body = d.kind === 'dusuruldu'
+    ? `Bu yüzden sayfa başı ~${d.secs} sn sürüyordu. Tarama kalitesini <b>${escapeHtml(d.fromAd)}</b> → <b>${escapeHtml(d.toAd)}</b> düşürdüm; okuma kaldığı yerden sürüyor ve bu ayar sonraki kitaplarda da geçerli.`
+    : `Sayfa başı ~${d.secs} sn sürüyor. Hızlandırmak için ${escapeHtml(d.tip)} seçebilirsin.`;
+  el.innerHTML = `<div class="sn-ico">⚙</div><div class="sn-body"><b>${head}</b><p>${body}</p>
+    <div class="sn-act">${d.kind === 'dusuruldu' ? `<button class="btn plain sm" data-sn="undo">Geri al (${escapeHtml(d.fromAd)})</button>` : ''}
+    <button class="btn plain sm" data-sn="panel">Ayarlar</button><button class="btn sm" data-sn="ok">Tamam</button></div></div>`;
+  el.onclick = async (e) => {
+    const b = e.target.closest('[data-sn]'); if (!b) return;
+    if (b.dataset.sn === 'undo') {
+      state.models = await api.setScan({ mode: 'elle', level: d.from });
+      toast(`Tarama kalitesi yine "${d.fromAd}". Elle seçildiği için artık otomatik değişmeyecek.`);
+      pollOllama();
+    } else if (b.dataset.sn === 'panel') openSettings('scan');
+    el.classList.remove('show');
+  };
+  void el.offsetWidth; el.classList.add('show');
+}
+api.onScanChanged((d) => { scanNotice(d); pollOllama(); });
+// ---------- Ayarlar penceresi (soldan sekmeli: Modeller · Tarama kalitesi · Görünüm · Kurulum · Hakkında) ----------
+const ST_TABS = ['models', 'scan', 'view', 'setup', 'about'];
+let stTab = (() => { try { const t = localStorage.getItem('erme.settingsTab'); return ST_TABS.includes(t) ? t : 'models'; } catch { return 'models'; } })();
+let stInfo = null;   // setupState: kurulum ve hakkında sekmeleri için
+function openSettings(tab) {
+  if (ST_TABS.includes(tab)) stTab = tab;
+  $('modelModal').classList.add('show');
+  showSettingsTab(stTab);
+}
+const openModelPanel = () => openSettings('models');
+function closeSettings() { $('modelModal').classList.remove('show'); }
+function showSettingsTab(tab) {
+  stTab = tab; try { localStorage.setItem('erme.settingsTab', tab); } catch {}
+  $('stNav').querySelectorAll('[data-st]').forEach((b) => { const on = b.dataset.st === tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1; });
+  $('modelModal').querySelectorAll('.st-pane').forEach((p) => { p.hidden = p.dataset.pane !== tab; });
+  $('modelModal').querySelector('.st-body').scrollTop = 0;
+  renderSettings();
+}
+function renderSettings() {
+  if (!$('modelModal').classList.contains('show')) return;
+  if (stTab === 'models' || stTab === 'scan') renderModelPanel();
+  else if (stTab === 'view') renderViewPane();
+  else loadInfoPanes();
+}
+function settingsNavLabels() {
+  const sc = state.models?.scan, EQ = window.ErmeQuality;
+  if (sc) $('stNavScan').textContent = `şu an: ${sc.ad}${sc.mode === 'otomatik' ? ' · otomatik' : ''}`;
+  if (EQ) $('stNavView').textContent = `grafik: ${EQ.p.ad}${EQ.auto ? ' · otomatik' : ''}`;
+  if (stInfo) $('stNavSetup').textContent = setupComplete(stInfo) ? 'her şey hazır' : 'eksik var';
+  $('stNav').querySelector('[data-st="setup"]').classList.toggle('warn', !!stInfo && !setupComplete(stInfo));
+}
+$('settingsBtn').addEventListener('click', () => openSettings());
+$('stNav').addEventListener('click', (e) => { const b = e.target.closest('[data-st]'); if (b) showSettingsTab(b.dataset.st); });
+$('stNav').addEventListener('keydown', (e) => {
+  const d = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key]; if (!d) return;
+  e.preventDefault(); const t = ST_TABS[(ST_TABS.indexOf(stTab) + d + ST_TABS.length) % ST_TABS.length];
+  showSettingsTab(t); $('stNav').querySelector(`[data-st="${t}"]`).focus();
+});
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === ',') { e.preventDefault(); $('modelModal').classList.contains('show') ? closeSettings() : openSettings(); }
+  else if (e.key === 'Escape' && $('modelModal').classList.contains('show') && $('setupView').hidden) closeSettings();
+});
+
+// Görünüm: grafik kalitesi (quality.js)
+const VIEW_DESC = {
+  oto: 'Yüksekten başlar; kare hızı 35\'in altına düşerse kalite kendiliğinden bir kademe iner ve sana haber verilir.',
+  yuksek: 'Keskin görüntü, yumuşak gölgeler, bütün hayvanlar ve yaprak/toz parçacıkları. Güçlü ekran kartı için.',
+  orta: 'Biraz daha düşük çözünürlük ve gölge, parçacıkların %60\'ı. Çoğu dizüstünde akıcı.',
+  dusuk: 'Gölgesiz, az parçacık ve hayvan. Eski ya da dahili ekran kartında akıcı çalışır.',
+};
+function renderViewPane() {
+  const EQ = window.ErmeQuality, el = $('stView');
+  if (!EQ) { el.innerHTML = '<p class="muted">Grafik kalitesi ayarı bu sürümde yok.</p>'; return; }
+  const opts = [['oto', 'Otomatik', `şu an: ${EQ.p.ad}`], ...EQ.ORDER.map((k) => [k, EQ.PRESETS[k].ad, ''])];
+  el.innerHTML = `<section class="mm-role"><h4>Grafik kalitesi <small>ağaç, kovuk, kapak ve açılış sahneleri</small></h4>
+    ${opts.map(([k, ad, ek]) => { const on = k === 'oto' ? EQ.auto : !EQ.auto && EQ.level === k;
+      return `<button class="mm-opt${on ? ' on' : ''}" data-q="${k}"><i></i><span class="mm-name">${ad}${k === 'oto' ? ' <em>önerilen</em>' : EQ.level === k ? ' <em>kullanılıyor</em>' : ''}</span>${ek ? `<span class="mm-ram">${ek}</span>` : ''}<span class="mm-scan-note">${VIEW_DESC[k]}</span></button>`; }).join('')}
+    <p class="muted mm-scan-p">${EQ.fps ? `Son ölçülen kare hızı: <b>${Math.round(EQ.fps)} kare/sn</b>.` : 'Kare hızı 3D sahne açıkken ölçülür.'} Bu ayar yalnızca görüntüyü etkiler; OCR hızını ve doğruluğunu değiştirmez.</p></section>
+    <section class="mm-role"><h4>Mevsim</h4><p class="muted mm-scan-p">Ağacın ve manzaranın mevsimi üst çubuktaki yaprak düğmesinden seçilir; "Bugün" seçiliyse takvime göre kendiliğinden değişir.</p></section>`;
+}
+$('stView').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-q]'), EQ = window.ErmeQuality; if (!b || !EQ) return;
+  if (b.dataset.q === 'oto') EQ.set('yuksek', true); else EQ.set(b.dataset.q, false);
+  renderViewPane(); settingsNavLabels();
+});
+
+// Kurulum ve Hakkında
+async function loadInfoPanes() {
+  const tab = stTab;
+  if (!stInfo) $(tab === 'setup' ? 'stSetup' : 'stAbout').innerHTML = '<div class="empty-note">Durum okunuyor…</div>';
+  stInfo = await api.setupState().catch(() => stInfo);
+  settingsNavLabels();
+  if (stTab !== tab || !stInfo) return;
+  if (tab === 'setup') renderSetupPane(); else renderAboutPane();
+}
+function renderSetupPane() {
+  const st = stInfo, row = (ok, ad, durum, not = '') => `<div class="st-row ${ok ? 'ok' : 'bad'}"><i>${ok ? '✓' : '!'}</i><b>${ad}</b><span>${durum}</span>${not ? `<small>${not}</small>` : ''}</div>`;
+  const ocr = (state.models?.roles?.ocr?.secenek || []).filter((o) => st.installed.includes(o.id)).map((o) => o.ad);
+  $('stSetup').innerHTML = `<section class="mm-role"><h4>Bileşenler ${setupComplete(st) ? '<small>her şey hazır</small>' : '<small>eksikleri sihirbaz tek tıkla kurar</small>'}</h4>
+    ${row(st.packed || !!st.python, 'Python', st.packed ? 'uygulamayla birlikte geliyor' : escapeHtml(st.python || 'bulunamadı'), st.packed || st.python ? '' : 'python.org\'dan kurulmalı')}
+    ${row(st.ollama.up, 'Ollama', st.ollama.up ? 'çalışıyor' : st.ollama.exe ? 'kurulu ama kapalı' : 'kurulu değil', st.ollama.up ? '' : 'yapay zekâ modellerini çalıştıran program')}
+    ${row(st.dict, 'Türkçe sözlük', st.dict ? 'kurulu' : 'eksik', st.dict ? '' : 'düzeltme adımı için gerekli (~37 MB)')}
+    ${row(st.hasOcr, 'OCR okuyucu modeli', st.hasOcr ? escapeHtml(ocr.join(', ') || 'kurulu') : 'kurulu değil', st.hasOcr ? '' : 'sayfaları okuyan model')}
+    </section>
+    <section class="mm-role"><h4>Kurulu modeller <small>${st.installed.length} adet</small></h4>
+      <div class="st-chips">${st.installed.length ? st.installed.map((m) => `<span>${escapeHtml(m)}</span>`).join('') : '<span class="muted">Ollama kapalı ya da hiç model yok</span>'}</div></section>
+    <div class="st-actions"><button class="btn" data-act="wizard">Kurulum Sihirbazını aç</button><button class="btn plain" data-act="data">Veri klasörünü aç</button></div>
+    <p class="muted mm-scan-p">Sihirbaz Ollama'yı kurar ya da başlatır, Türkçe sözlüğü ve bilgisayarına uygun modelleri ilerleme çubuğuyla indirir.</p>`;
+}
+function renderAboutPane() {
+  const st = stInfo;
+  $('stAbout').innerHTML = `<div class="st-about"><div class="logo-mark">E</div><div><b>ERME BOOKS · Kitap Stüdyosu</b><span>Sürüm ${escapeHtml(st.version || '?')} · Electron ${escapeHtml(st.electron || '?')}</span></div></div>
+    <section class="mm-role"><h4>Klasörler</h4>
+      <div class="st-row plain"><b>Kitaplar ve çıktılar</b><code>${escapeHtml(st.dataDir || '')}</code></div>
+      <p class="muted mm-scan-p">PDF'ler, OCR metinleri, kapaklar ve EPUB'lar burada durur. Uygulamayı güncellemek ya da yeniden kurmak bunları silmez.</p></section>
+    <div class="st-actions"><button class="btn plain" data-act="data">Veri klasörünü aç</button><button class="btn plain" data-act="github">GitHub sayfası</button></div>
+    <p class="muted mm-scan-p">Açık kaynak · MIT lisansı. Bütün okuma bilgisayarında yapılır; kitapların internete gönderilmez.</p>`;
+}
+['stSetup', 'stAbout'].forEach((id) => $(id).addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  if (b.dataset.act === 'wizard') openSetup();
+  else if (b.dataset.act === 'data') api.openDataDir();
+  else if (b.dataset.act === 'github') api.openLink('https://github.com/emre6n-devv/erme-books');
+}));
 function renderModelPanel() {
   const st = state.models;
   if (!st) { $('mmRoles').innerHTML = '<div class="empty-note">Donanım bilgisi okunuyor…</div>'; return; }
   const s = st.sys;
   $('mmSys').innerHTML = [['İşletim sistemi', s.os], ['Bellek', `${fmtN(s.totalGB)} GB RAM · modellere ayrılabilir ≈ ${fmtN(st.limitGB)} GB`],
-    ['Ekran kartı', `${s.gpu}${s.dedicated ? '' : ' (dahili)'}`], ['İşlemci', `${s.cpu} · ${s.cores} çekirdek`], ['Ollama', st.up ? `açık · ${st.installed.length} model kurulu` : 'kapalı']]
+    ['Ekran kartı', `${s.gpu}${s.dedicated ? '' : ' (dahili)'}${s.vramGB ? ` · ${fmtN(s.vramGB)} GB bellek` : ''}`], ['İşlemci', `${s.cpu} · ${s.cores} çekirdek`], ['Ollama', st.up ? `açık · ${st.installed.length} model kurulu` : 'kapalı']]
     .map(([k, v]) => `<div><span>${k}</span><b>${escapeHtml(String(v))}</b></div>`).join('');
   $('modelModal').querySelectorAll('.mm-mode button').forEach((b) => b.classList.toggle('on', b.dataset.m === st.mode));
   $('mmRoles').innerHTML = Object.entries(st.roles).map(([key, r]) => `<section class="mm-role"><h4>${escapeHtml(r.ad)}${r.zorunlu ? '' : ' <small>isteğe bağlı</small>'}</h4>
@@ -1653,44 +1887,157 @@ function renderModelPanel() {
       if (o.id) tags.push(`<span class="mm-ram">~${fmtN(o.ram)} GB</span>`);
       tags.push(`<span class="mm-err">${o.hata[1] ? `+${errTxt(o.hata)} hata` : 'en doğru'}</span>`);
       if (o.id && !o.sigar) tags.push('<span class="mm-tag bad">bu bilgisayar için ağır</span>');
-      if (o.id && st.up && !o.kurulu) tags.push(`<span class="mm-tag miss" title="Terminalde çalıştır">kurulu değil · <code>ollama pull ${escapeHtml(o.id)}</code></span>`);
-      if (o.id && st.up && o.kurulu) tags.push('<span class="mm-tag ok">kurulu</span>');
+      if (o.yerel) tags.push(o.kurulu ? '<span class="mm-tag ok">kurulu</span>' : '<span class="mm-tag miss">Tesseract kurulu değil</span>');
+      else if (o.id && st.up && !o.kurulu) tags.push(`<span class="mm-tag miss">kurulu değil</span><span class="mm-get" role="button" tabindex="0" data-get="${escapeHtml(o.id)}" title="Kurulum Sihirbazı ile indir">İndir${o.indir ? ` · ~${o.indir.toLocaleString('tr-TR')} GB` : ''}</span>`);
+      else if (o.id && st.up && o.kurulu) tags.push('<span class="mm-tag ok">kurulu</span>');
       return `<button class="mm-opt${on ? ' on' : ''}" data-role="${key}" data-id="${escapeHtml(o.id)}"><i></i><span class="mm-name">${escapeHtml(o.ad)}${o.tur === 'standart' ? ' <em>standart</em>' : o.tur === 'hafif' ? ' <em>hafif</em>' : ''}</span>${tags.join('')}</button>`;
     }).join('')}</section>`).join('');
+  const sc = st.scan;
+  $('stScan').innerHTML = sc ? `<div class="mm-sys st-scan-hw"><div><span>Ekran kartı</span><b>${escapeHtml(`${s.gpu}${s.vramGB ? ` · ${fmtN(s.vramGB)} GB bellek` : ''}`)}</b></div>
+    <div><span>Donanıma göre önerilen</span><b>${escapeHtml(sc.levels.find((l) => l.id === sc.donanim.level).ad)} · ${escapeHtml(sc.donanim.neden)}</b></div></div>
+    <p class="muted st-lead">Sayfalar okuyucu modele resim olarak gönderilir. Çözünürlük ve bağlam penceresi büyüdükçe okuma netleşir ama model ekran kartında daha çok yer kaplar; sığmazsa bir kısmı işlemcide çalışır ve sayfa başına süre birkaç katına çıkar.</p>
+    ${scanSection(sc)}` : '<div class="empty-note">Donanım bilgisi okunuyor…</div>';
+  settingsNavLabels();
   $('mmFoot').innerHTML = `<div class="mm-total"><span>Tüm hattın tahmini kelime hata payı</span><b>${errTxt(st.err)}</b><small>standart: ${errTxt(st.baseErr)}</small></div>
     <p class="muted">${st.mode === 'otomatik' ? 'Otomatik modda belleğe sığan ve kurulu olan en güçlü model seçilir; sığmayan ya da kurulu olmayan isteğe bağlı adımlar kapatılır.' : 'Elle modda seçimin donanım uyarısına rağmen kullanılır. Bellek yetmezse Ollama modeli yavaş çalıştırır ya da hata verir.'}
     Değerler yaklaşıktır; RAM+VRAM toplamına göre hesaplanır.</p>`;
 }
 $('ollamaBox').addEventListener('click', openModelPanel);
 $('ollamaBox').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openModelPanel(); } });
-$('mmClose').addEventListener('click', () => $('modelModal').classList.remove('show'));
-$('modelModal').addEventListener('click', (e) => { if (e.target === $('modelModal')) $('modelModal').classList.remove('show'); });
-$('mmRefresh').addEventListener('click', () => pollOllama(true));
+$('mmClose').addEventListener('click', closeSettings);
+$('modelModal').addEventListener('click', (e) => { if (e.target === $('modelModal')) closeSettings(); });
+$('mmRefresh').addEventListener('click', () => { stInfo = null; pollOllama(true); if (stTab === 'setup' || stTab === 'about') loadInfoPanes(); });
 $('modelModal').querySelector('.mm-mode').addEventListener('click', async (e) => {
   const b = e.target.closest('button'); if (!b || !state.models) return;
   const manual = {}; for (const [k, r] of Object.entries(state.models.roles)) manual[k] = r.secili;   // elle moda geçerken mevcut seçimler korunur
   state.models = await api.setModels({ mode: b.dataset.m, manual }); pollOllama();
 });
+$('stScan').addEventListener('click', async (e) => {
+  const sc = e.target.closest('[data-scan]'); if (!sc) return;
+  const v = sc.dataset.scan;
+  state.models = await api.setScan(v === 'otomatik' ? { mode: 'otomatik' } : { mode: 'elle', level: v });
+  renderModelPanel(); pollOllama();
+  if (state.running === 'ocr') toast('Okuma yeni tarama kalitesiyle kaldığı yerden sürüyor.');
+});
 $('mmRoles').addEventListener('click', async (e) => {
+  const g = e.target.closest('[data-get]'); if (g) { e.stopPropagation(); return openSetup({ preselect: g.dataset.get }); }
   const b = e.target.closest('.mm-opt'); if (!b) return;
   state.models = await api.setModels({ mode: 'elle', manual: { [b.dataset.role]: b.dataset.id } });
   pollOllama();
 });
 
-// ---------- grafik kalitesi (quality.js) ----------
-function syncQualitySel() {
-  const EQ = window.ErmeQuality; if (!EQ) { $('qualitySel').closest('.quality-pick').hidden = true; return; }
-  const sel = $('qualitySel');
-  sel.options[0].textContent = `Otomatik · ${EQ.p.ad}`;
-  sel.value = EQ.auto ? 'oto' : EQ.level;
+// ---------- İlk Kurulum Sihirbazı ----------
+// Terminal bilmeyen kullanıcı için: Ollama'yı kurar/başlatır, Türkçe sözlüğü ve modelleri ilerleme çubuğuyla indirir.
+const sv = { st: null, busy: '', prog: {}, pick: null, dismissed: false, poll: 0, extra: [] };
+const gbTxt = (v) => `~${(Math.round(v * 10) / 10).toLocaleString('tr-TR')} GB`;
+const svBar = (p) => `<div class="sv-bar"><i style="width:${Math.round((p || 0) * 100)}%"></i></div>`;
+async function openSetup(opts = {}) {
+  if (opts.preselect) sv.extra = [...new Set([...(sv.extra || []), ...[].concat(opts.preselect)])];
+  $('modelModal').classList.remove('show');
+  const v = $('setupView'); v.hidden = false; void v.offsetWidth; v.classList.add('show');
+  await refreshSetup();
 }
+function closeSetup() { const v = $('setupView'); v.classList.remove('show'); setTimeout(() => { if (!v.classList.contains('show')) v.hidden = true; }, 250); clearInterval(sv.poll); sv.poll = 0; stInfo = null; renderSettings(); }
+async function refreshSetup() {
+  sv.st = await api.setupState().catch(() => null);
+  if (sv.st && !sv.pick) sv.pick = new Set(sv.st.recommended.filter((r) => !r.kurulu).map((r) => r.id));
+  (sv.extra || []).forEach((id) => sv.pick && sv.pick.add(id));
+  renderSetup();
+  pollOllama(true);
+}
+function setupComplete(st) { return !!st && (st.packed || !!st.python) && st.ollama.up && st.dict && st.hasOcr; }
+function renderSetup() {
+  const st = sv.st, el = $('svSteps');
+  if (!st) { el.innerHTML = '<li class="sv-step"><div class="sv-body">Durum okunuyor…</div></li>'; return; }
+  const steps = [];
+  const step = (ok, n, title, body) => steps.push(`<li class="sv-step${ok ? ' ok' : ''}"><span class="sv-num">${ok ? '✓' : n}</span><div class="sv-body"><b>${title}</b>${body}</div></li>`);
+  let n = 1;
+  if (!st.packed) step(!!st.python, n++, 'Python', st.python ? `<p>${escapeHtml(st.python)} kurulu.</p>`
+    : `<p>Python 3.10 veya üstü bulunamadı. İndirip kur; kurulumun ilk ekranında <b>"Add python.exe to PATH"</b> kutusunu işaretlemeyi unutma. Sonra uygulamayı yeniden aç.</p>
+       <div class="sv-act"><button class="btn accent sm" data-act="python">Python'u indir</button></div>`);
+  // Ollama
+  const op = sv.prog.ollama;
+  step(st.ollama.up, n++, 'Yapay zekâ motoru (Ollama)', st.ollama.up ? '<p>Çalışıyor.</p>'
+    : st.ollama.exe ? `<p>Kurulu ama kapalı.</p><div class="sv-act"><button class="btn accent sm" data-act="startOllama"${sv.busy ? ' disabled' : ''}>${sv.busy === 'startOllama' ? 'Başlatılıyor…' : "Ollama'yı Başlat"}</button></div>`
+      : `<p>Modelleri bilgisayarında çalıştıran ücretsiz program. ${st.platform === 'win32' ? 'İndirilip kurulum penceresi açılır; orada <b>Install</b> düğmesine basman yeterli.' : 'İndirme sayfası tarayıcıda açılır.'}</p>
+        ${op ? `${svBar(op.pct)}<p class="sv-small">${escapeHtml(op.status)}${op.pct >= 1 ? ' · kurulum bitince burası kendiliğinden güncellenir' : ` · %${Math.round(op.pct * 100)}`}</p>` : ''}
+        <div class="sv-act"><button class="btn accent sm" data-act="installOllama"${sv.busy ? ' disabled' : ''}>${sv.busy === 'installOllama' ? 'İndiriliyor…' : "Ollama'yı İndir ve Kur"}</button></div>`);
+  // sözlük
+  const dp = sv.prog.dict;
+  step(st.dict, n++, 'Türkçe sözlük', st.dict ? '<p>Hazır.</p>'
+    : `<p>Metin düzeltme için gerekli açık kaynak sözlük (~35 MB).</p>${dp ? `${svBar(dp.pct)}<p class="sv-small">${escapeHtml(dp.status)} · %${Math.round(dp.pct * 100)}</p>` : ''}
+       <div class="sv-act"><button class="btn accent sm" data-act="dict"${sv.busy ? ' disabled' : ''}>${sv.busy === 'dict' ? 'İndiriliyor…' : 'Sözlüğü İndir'}</button></div>`);
+  // modeller
+  const extraRows = (sv.extra || []).filter((id) => !st.recommended.some((r) => r.id === id)).map((id) => ({ id, ad: id, rolAd: 'seçilen model', indir: 0, kurulu: st.installed.includes(id) }));
+  const rows = [...st.recommended, ...extraRows];
+  const todo = rows.filter((r) => !r.kurulu && sv.pick.has(r.id));
+  const totalGB = todo.reduce((a, r) => a + (r.indir || 0), 0);
+  const pulling = sv.busy === 'pull';
+  step(st.hasOcr && rows.every((r) => r.kurulu || !sv.pick.has(r.id)), n++, 'Yapay zekâ modelleri',
+    `<p>Bilgisayarın: <b>${fmtN(st.ramGB)} GB RAM</b> · ${escapeHtml(st.gpu)}${st.dedicated ? '' : ' (dahili)'} → sana uygun set işaretlendi. Modeller büyük dosyalardır; indirme internet hızına göre 15 dakika ile 1–2 saat sürebilir, bu sırada bilgisayarı kullanmaya devam edebilirsin.</p>
+     <div class="sv-models">${rows.map((r) => {
+       const p = sv.prog['m:' + r.id];
+       return `<label class="sv-model${r.kurulu ? ' done' : ''}"><input type="checkbox" data-model="${escapeHtml(r.id)}" ${r.kurulu ? 'checked disabled' : sv.pick.has(r.id) ? 'checked' : ''}${pulling ? ' disabled' : ''}>
+         <span class="sv-mname">${escapeHtml(r.ad)}<small>${escapeHtml(r.rolAd)}</small></span>
+         <span class="sv-msize">${r.kurulu ? 'kurulu ✓' : r.indir ? gbTxt(r.indir) : ''}</span>
+         ${p && !r.kurulu ? `<span class="sv-mprog">${svBar(p.pct)}<em>${p.error ? escapeHtml(p.error) : `%${Math.round(p.pct * 100)}`}</em></span>` : ''}</label>`;
+     }).join('')}</div>
+     <div class="sv-act">${pulling ? '<button class="btn plain sm" data-act="cancel">İptal</button>'
+       : `<button class="btn accent sm" data-act="pull"${!st.ollama.up || !todo.length ? ' disabled' : ''}>${todo.length ? `Seçilenleri İndir (${gbTxt(totalGB)})` : 'İndirilecek model yok'}</button>`}
+       ${!st.ollama.up ? '<span class="sv-small">Önce Ollama’yı kur ya da başlat.</span>' : ''}<button class="btn ghost sm" data-act="models">Tüm modeller…</button></div>`);
+  el.innerHTML = steps.join('');
+  const done = setupComplete(st);
+  $('svDone').disabled = !done || pulling;
+  $('svNote').textContent = done ? 'Her şey hazır.' : st.packed ? `Kitapların ${st.dataDir} klasöründe tutulur.` : '';
+}
+$('svSteps').addEventListener('change', (e) => {
+  const c = e.target.closest('input[data-model]'); if (!c) return;
+  c.checked ? sv.pick.add(c.dataset.model) : sv.pick.delete(c.dataset.model); renderSetup();
+});
+$('svSteps').addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-act]'); if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'python') return api.openLink('https://www.python.org/downloads/');
+  if (act === 'models') { closeSetup(); return openModelPanel(); }
+  if (act === 'cancel') { await api.setupCancel(); return; }
+  if (sv.busy) return;
+  sv.busy = act; renderSetup();
+  let r = null;
+  if (act === 'startOllama') r = await api.setupStartOllama();
+  if (act === 'installOllama') {
+    r = await api.setupInstallOllama();
+    if (r?.ok && !sv.poll) sv.poll = setInterval(async () => { const s = await api.ollamaStatus(); if (s.up) { clearInterval(sv.poll); sv.poll = 0; delete sv.prog.ollama; toast('Ollama hazır.'); refreshSetup(); } }, 3000);
+  }
+  if (act === 'dict') r = await api.setupDict();
+  if (act === 'pull') {
+    const ids = [...sv.pick].filter((id) => !sv.st.installed.includes(id));
+    r = await api.setupPull(ids);
+    const bad = Object.entries(r || {}).filter(([, v]) => !v.ok);
+    toast(bad.length ? `${bad.length} model indirilemedi: ${bad.map(([k]) => k).join(', ')}` : 'Modeller indirildi.', !!bad.length);
+    r = null;
+  }
+  sv.busy = '';
+  if (r?.error) toast(r.error, true);
+  await refreshSetup();
+});
+api.onSetupProgress((d) => {
+  if (d.kind === 'model') sv.prog['m:' + d.model] = { pct: d.pct, error: d.done && !d.ok ? d.status : '' };
+  else sv.prog[d.kind] = { pct: d.pct, status: d.status };
+  if (!$('setupView').hidden) renderSetup();
+});
+$('svLater').addEventListener('click', () => { sv.dismissed = true; closeSetup(); });
+$('svDone').addEventListener('click', () => { closeSetup(); toast('Hazırsın! "Yeni PDF" ile ilk kitabını ekleyebilirsin.'); });
+// açılışta eksik varsa sihirbazı göster (açılış animasyonundan sonra)
+async function checkSetupOnStart() {
+  const st = await api.setupState().catch(() => null);
+  if (st && !setupComplete(st) && !sv.dismissed) setTimeout(() => openSetup(), 1200);
+}
+
+// ---------- grafik kalitesi (quality.js) ----------
+// Seçim Ayarlar → Görünüm sekmesinde; burada yalnızca otomatik düşüşte haber verilir.
+function syncQualitySel() { settingsNavLabels(); if ($('modelModal').classList.contains('show') && stTab === 'view') renderViewPane(); }
 if (window.ErmeQuality) {
-  window.ErmeQuality.on((p, reason) => { syncQualitySel(); if (reason === 'auto') toast(`Akıcılık için grafik kalitesi "${p.ad}" seviyesine indirildi (gölge, parçacık ve hayvan yoğunluğu hafifletildi).`); });
-  $('qualitySel').addEventListener('change', (e) => {
-    const v = e.target.value, EQ = window.ErmeQuality;
-    if (v === 'oto') EQ.set('yuksek', true); else EQ.set(v, false);
-    syncQualitySel();
-  });
+  window.ErmeQuality.on((p, reason) => { syncQualitySel(); if (reason === 'auto') toast(`Akıcılık için grafik kalitesi "${p.ad}" seviyesine indirildi (gölge, parçacık ve hayvan yoğunluğu hafifletildi). Değiştirmek için: Ayarlar → Görünüm.`); });
 }
 syncQualitySel();
 
@@ -1701,11 +2048,18 @@ setTimeout(() => { document.querySelector('.intro:not(.out)')?.click(); afterInt
 document.querySelector('.logo').addEventListener('click', () => showTab('home'));
 document.querySelector('.logo').title = 'Ana sayfa: hayat ağacı';
 
+// ---------- pencere boyutu ----------
+// Büyütme/tam ekran sonrası (ve açılışta) tüm 3B sahneler ile üst çubuk yeni boyutu hemen alsın
+const kickResize = () => requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+if (api.onWinResized) api.onWinResized(() => { kickResize(); setTimeout(kickResize, 250); });
+window.addEventListener('load', () => setTimeout(kickResize, 60));
+
 // ---------- başlangıç ----------
 applySeason(localStorage.getItem('season') || 'bugun');
 renderSwatches();
 setColor('turuncu', false);
 setRunning(null);
 loadBooks((() => { try { return localStorage.getItem('lastBook') || ''; } catch { return ''; } })());
+setTimeout(checkSetupOnStart, 2500);
 pollOllama();
 setInterval(pollOllama, 10000);

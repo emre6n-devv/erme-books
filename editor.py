@@ -120,6 +120,15 @@ SPACE_BATCH_SIZE = 15
 AUTO_PROTECT_MIN_COUNT = 4
 
 TR_LETTERS = "A-Za-zÇĞİıÖŞÜçğıöşüÂâÎîÛû"
+# Yabancı özel isimlerdeki harfler (é, ä, ñ, ø, č...) de kelimenin parçasıdır: yoksa "Napoléon"
+# "Napol" diye kesilir ve "Jos" gibi bir parçanın düzeltmesi "José"yi bozabilirdi.
+TR_LETTERS += "À-ÖØ-öø-ÿĀ-ſ"
+TURKCE_HARFLER = set("abcçdefgğhıijklmnoöprsştuüvyzâîûqwxABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZÂÎÛQWX")
+
+
+def yabanci_harfli(w: str) -> bool:
+    """Türkçede olmayan bir harf taşıyan kelime (Napoléon, Europäers): yabancı yazımdır, düzeltilmez."""
+    return any(c.isalpha() and c not in TURKCE_HARFLER for c in w)
 
 AMBIGUOUS_PAIRS = [("i", "ı"), ("s", "ş"), ("u", "ü"), ("o", "ö"), ("c", "ç"), ("g", "ğ")]
 AMBIGUOUS_CHARS = set(a for pair in AMBIGUOUS_PAIRS for a in pair)
@@ -154,6 +163,8 @@ CIRCUMFLEX_STEMS = [
 CIRCUMFLEX_STEMS = [x for x in CIRCUMFLEX_STEMS if x]
 CIRCUMFLEX_STYLE_MIN = 20       # kitapta en az bu kadar şapkalı kelime varsa "şapkalı yazım" kabul edilir
 URL_PARTS = {"com", "net", "org", "www", "http", "https", "tr", "html"}
+# E-posta ve web adresleri: harf düzeltmesi yapılmaz (yayinevi@canyayinlari.com doğru yazımdır)
+ADRES_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+|(?:https?://|www\.)\S+|\b[\w-]+(?:\.[\w-]+)*\.(?:com|net|org|edu|gov|info|tr)\b\S*")
 
 STOPWORDS = {
     "bu", "şu", "o", "ne", "de", "da", "e", "ve", "ya", "ki", "bir",
@@ -549,7 +560,7 @@ def find_suspicious_words(text: str, dictionaries):
     kesin özel isim) 'otomatik korunan' kümede işaretler - LLM'e hiç
     sorulmadan dokunulmadan bırakılır."""
     # Sayıya gelen ekler (1990'ların, 1950'lerden) tek başına kelime değil, tarama dışı
-    scan_text = re.sub(rf"\d+['’][{TR_LETTERS}]+", " ", text)
+    scan_text = re.sub(rf"\d+['’][{TR_LETTERS}]+", " ", ADRES_RE.sub(" ", text))
     words = re.findall(rf"[{TR_LETTERS}]+(?:['’][{TR_LETTERS}]+)?", scan_text)
     counts = Counter(words)
     # Büyük/küçük harf ve ek fark etmeksizin kök sıklığı (Camii, Camii'nin, camii...)
@@ -566,6 +577,8 @@ def find_suspicious_words(text: str, dictionaries):
             continue  # Booozaaa, İiiyii: bilerek uzatılmış, dokunma
         if trlow(w) in URL_PARTS:
             continue
+        if yabanci_harfli(w):
+            continue  # yabancı yazım (Napoléon, Fouché): sözlükte olmaz ama hata da değildir
         if trlow(w) in SUFFIX_LIKE:
             continue  # kesme işaretinden kopmuş ek (Eliza' nın): kelime değil, "düzeltilmez"
         core = w
@@ -700,7 +713,7 @@ def restore_circumflex(text: str):
     return text, log
 
 
-def remove_common_noun_apostrophes(text: str, dictionaries, second_text: str = ""):
+def remove_common_noun_apostrophes(text: str, dictionaries, second_text: str = "", basili: bool = False):
     """Kesme işareti sadece özel isimlerden sonra gelir. OCR bazen cins
     isimlere de koyuyor (dükkân'da, söz'e, kız'a - testte 40+ kez). Küçük
     harfli, sözlükte olan bir kelimeden sonra gelen ve birleşince geçerli
@@ -708,6 +721,15 @@ def remove_common_noun_apostrophes(text: str, dictionaries, second_text: str = "
     (booze'dan) ve bölünmüş isim parçaları (Mev-lut'un) birleşik hali geçersiz
     olduğu için olduğu gibi kalır."""
     log = []
+    if basili:
+        # Metin PDF'in kendi metin katmanından geldi: kesme işaretleri OCR'ın değil, basılı metnin.
+        return text, log
+    # Aynı kök kitapta en az 3 farklı ekle kesme işaretli geçiyorsa (ben'in, ben'den, ben'di)
+    # bu yazarın tercihidir; OCR'ın rastgele koyduğu kesme işareti böyle düzenli tekrar etmez.
+    bicimler = {}
+    for b, e in re.findall(rf"(?<![{TR_LETTERS}'’\-\d])([a-zçğıöşüâîû]+)['’]([a-zçğıöşüâîû]{{1,6}})(?![{TR_LETTERS}])", text):
+        bicimler.setdefault(b, set()).add(e)
+    bilincli = {b for b, ekler in bicimler.items() if len(ekler) >= 3}
     # İkinci model de aynı yerde kesme işareti okuduysa o kesme işareti sayfada basılıdır,
     # yazarın bilinçli tercihidir (Satranç: "öteki ben'in", "iki ben'den"): dokunulmaz.
     printed = set(re.findall(rf"[{TR_LETTERS}]+'[{TR_LETTERS}]+", second_text.replace("’", "'"))) if second_text else set()
@@ -715,7 +737,7 @@ def remove_common_noun_apostrophes(text: str, dictionaries, second_text: str = "
     def repl(m):
         base, suffix = m.group(1), m.group(2)
         joined = base + suffix
-        if f"{base}'{suffix}" in printed:
+        if f"{base}'{suffix}" in printed or base in bilincli:
             return m.group(0)
         if is_valid(dictionaries, base) and is_valid(dictionaries, joined):
             log.append((m.group(0), joined))
@@ -937,9 +959,19 @@ def apply_fix(text: str, wrong: str, correct: str) -> str:
     pre, post = rf"(?<![{TR_LETTERS}'’])", rf"(?![{TR_LETTERS}])"
     pattern = re.compile(pre + re.escape(wrong) + post)
     pattern_cap = re.compile(pre + re.escape(wrong.capitalize()) + post)
-    text = pattern.sub(correct, text)
-    text = pattern_cap.sub(correct.capitalize(), text)
-    return text
+    # Adreslerin (e-posta, web) içine dokunma: yalnızca aralarındaki metin düzeltilir
+    parcalar, son = [], 0
+    for m in ADRES_RE.finditer(text):
+        parcalar.append((text[son:m.start()], True))
+        parcalar.append((m.group(0), False))
+        son = m.end()
+    parcalar.append((text[son:], True))
+    out = []
+    for p, duzelt in parcalar:
+        if duzelt:
+            p = pattern_cap.sub(correct.capitalize(), pattern.sub(correct, p))
+        out.append(p)
+    return "".join(out)
 
 
 def process_word_batch(batch, verbose=False):
@@ -1013,6 +1045,14 @@ def main():
     # Boşluk kanıtı için ikinci model (GLM-OCR) tercih edilir, yoksa en son çalıştırılan.
     # Hepsi ayrıca şüpheli kelimelerde "diğer modellerin okuması" olarak kullanılır.
     other_texts = []
+    # Hafif OCR metni PDF'in metin katmanından aldıysa (_sayfalar.json model: metin-katmani)
+    # noktalama basılı metnindir; OCR kaynaklı sayılmaz.
+    metin_katmani = False
+    try:
+        ana = json.loads(input_path.with_name(f"{book_stem}_sayfalar.json").read_text(encoding="utf-8"))
+        metin_katmani = ana.get("model") == "metin-katmani"
+    except (ValueError, OSError):
+        pass
     for p in sorted(input_path.parent.glob(f"{book_stem}_sayfalar_*.json"),
                     key=lambda x: ("glm_ocr" in x.name, x.stat().st_mtime), reverse=True):
         try:
@@ -1217,7 +1257,8 @@ def main():
     print(f"  {sum(n for _, _, n in circ_log)} kelimeye şapka geri kondu ({len(circ_log)} farklı biçim).")
 
     print("Cins isimlerdeki kesme işaretleri kaldırılıyor...")
-    corrected_text, apos_log = remove_common_noun_apostrophes(corrected_text, dictionaries, second_text)
+    corrected_text, apos_log = remove_common_noun_apostrophes(corrected_text, dictionaries, second_text,
+                                                              basili=metin_katmani)
     print(f"  {len(apos_log)} kesme işareti kaldırıldı.")
 
     out_dir = input_path.parent

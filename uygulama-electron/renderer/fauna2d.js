@@ -62,7 +62,7 @@
     if (o.sock) { const sg = ctx.createLinearGradient(0, o.sock.y + 0.05, 0, o.sock.y - 0.03); sg.addColorStop(0, css(C(o.sock.col), 0)); sg.addColorStop(1, css(C(o.sock.col), 1)); ctx.fillStyle = sg; ctx.fillRect(B.x0, B.y0, B.x1 - B.x0, o.sock.y + 0.05 - B.y0); }
     if (o.tip) { ctx.fillStyle = o.tip.grad(ctx); ctx.fillRect(B.x0, B.y0, B.x1 - B.x0, B.y1 - B.y0); }
     // benekler (yavru geyik)
-    if (o.spots) { ctx.fillStyle = 'rgba(250,240,225,.85)'; for (let i = 0; i < o.spots.n; i++) { const x = lerp(o.spots.x0, o.spots.x1, rnd()), y = lerp(o.spots.y0, o.spots.y1, rnd()); ctx.beginPath(); ctx.ellipse(x, y, 0.012 + rnd() * 0.01, 0.009 + rnd() * 0.006, rnd(), 0, 6.283); ctx.fill(); } }
+    if (o.spots) { ctx.fillStyle = o.spots.col || 'rgba(250,240,225,.85)'; for (let i = 0; i < o.spots.n; i++) { const x = lerp(o.spots.x0, o.spots.x1, rnd()), y = lerp(o.spots.y0, o.spots.y1, rnd()); ctx.beginPath(); ctx.ellipse(x, y, 0.012 + rnd() * 0.01, 0.009 + rnd() * 0.006, rnd(), 0, 6.283); ctx.fill(); } }
     // tüy darbeleri: açık ve koyu, eğim yönünde, katman katman
     const area = (B.x1 - B.x0) * (B.y1 - B.y0), n = Math.floor(area * PX * PX * 0.012 * (o.fur ?? 1));
     const dir = o.furDir ?? -0.35, lw = 1.6 / PX;
@@ -345,18 +345,20 @@
       goose: { pal: { base: '#7a756c', light: '#aaa498', shadow: '#45413a', belly: '#e2dccf', line: '#2a2622' }, wing: ['#857e72', '#3a3632'], bill: '#2a2826', size: 0.6, span: 0.72, neck: true },
       robin: { pal: { base: '#8a6a4c', light: '#c09a70', shadow: '#4a3422', belly: '#f07040', line: '#2a1a10' }, wing: ['#8a6a4c', '#3a2818'], bill: '#2a2420', size: 0.27, span: 0.3 },
       owl: { pal: { base: '#8a6c50', light: '#c4a07a', shadow: '#4a3622', belly: '#eadcc6', line: '#2e2014' }, size: 0.4 },
+      // kar baykuşu: beyaz tüy, seyrek koyu benekler, altın gözler (kovuğun büyülü modu)
+      snowowl: { pal: { base: '#e9e8e3', light: '#ffffff', shadow: '#b6bac4', belly: '#fbfaf6', line: '#5a5a62' }, size: 0.4, eye: '#f2c418', spot: 'rgba(70,70,82,.55)' },
     }[kind];
     const root = new T.Group(), face = new T.Group(); root.add(face);
     const rig = new T.Group(); rig.scale.setScalar(P.size); face.add(rig);
     const body = new T.Group(); rig.add(body);
     const pal = P.pal, a = { kind, root, face, rig, body, flip: 1, blinkT: 2, dab: 0, yaw: 0 };
-    if (kind === 'owl') {   // önden: yumurta gövde, yüz diski, iri turuncu gözler
+    if (kind === 'owl' || kind === 'snowowl') {   // önden: yumurta gövde, yüz diski, iri turuncu (kar baykuşunda altın) gözler
       const bodyL = makeLayer({ pts: [[0, 0.02], [0.17, 0.08], [0.21, 0.3], [0.15, 0.48], [0, 0.52], [-0.15, 0.48], [-0.21, 0.3], [-0.17, 0.08]], pal, o: { bellyY: 0.36, fur: 1.4, furDir: -1.57,
-        spots: { n: 40, x0: -0.12, x1: 0.12, y0: 0.06, y1: 0.32 } } }, [0, 0.25], 0);
+        spots: { n: P.spot ? 52 : 40, x0: -0.12, x1: 0.12, y0: 0.06, y1: P.spot ? 0.42 : 0.32, col: P.spot } } }, [0, 0.25], 0);
       const head = makeLayer({
         pts: [[-0.17, 0.5], [-0.2, 0.66], [-0.16, 0.8], [-0.08, 0.76], [0, 0.78], [0.08, 0.76], [0.16, 0.8], [0.2, 0.66], [0.17, 0.5], [0, 0.45]], pal, o: { fur: 1.2, furDir: -1.57 },
         extra: both((ctx) => { ctx.fillStyle = 'rgba(244,232,212,.95)'; for (const s of [-1, 1]) { ctx.beginPath(); ctx.ellipse(s * 0.075, 0.62, 0.075, 0.085, 0, 0, 6.283); ctx.fill(); } },
-          eyeDraw(-0.072, 0.625, 0.04, '#f0a020'), eyeDraw(0.078, 0.625, 0.04, '#f0a020'),
+          eyeDraw(-0.072, 0.625, 0.04, P.eye || '#f0a020'), eyeDraw(0.078, 0.625, 0.04, P.eye || '#f0a020'),
           (ctx) => { ctx.fillStyle = '#4a3420'; ctx.beginPath(); ctx.moveTo(-0.018, 0.585); ctx.lineTo(0.018, 0.585); ctx.lineTo(0, 0.54); ctx.closePath(); ctx.fill(); }),
       }, [0, 0.5], 0.01);
       const lid = new T.Mesh(new T.PlaneGeometry(0.3, 0.1), new T.MeshBasicMaterial({ color: pal.base })); lid.position.set(0, 0.13, 0.002); lid.scale.y = 0.01; head.add(lid);

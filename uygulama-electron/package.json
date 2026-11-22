@@ -2,9 +2,11 @@
   "name": "kitap-ocr-studyosu",
   "version": "2.0.0",
   "description": "ERME BOOKS · Hayat Ağacı — taranmış Türkçe kitap PDF'lerini yerel yapay zekâ ile EPUB 3 e-kitaba dönüştüren masaüstü stüdyo",
+  "author": "ERME BOOKS",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64"
   },
   "devDependencies": {
     "electron": "^44.4.5"
@@ -16,5 +18,61 @@
   "private": true,
   "engines": {
     "node": ">=18"
+  },
+  "build": {
+    "appId": "com.ermebooks.hayatagaci",
+    "productName": "ERME BOOKS",
+    "copyright": "© 2026 ERME BOOKS",
+    "directories": {
+      "output": "../dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json",
+      "renderer/**/*",
+      "build/icon.png"
+    ],
+    "extraResources": [
+      {
+        "from": "../build_staging/py",
+        "to": "py"
+      },
+      {
+        "from": "../build_staging/python",
+        "to": "python"
+      },
+      {
+        "from": "../build_staging/tesseract",
+        "to": "tesseract"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "ERME-BOOKS-Kurulum-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ERME BOOKS",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "installerLanguages": [
+        "tr_TR"
+      ],
+      "language": "1055"
+    }
   }
 }

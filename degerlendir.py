@@ -209,16 +209,26 @@ def ctx(ref, i, w=5):
 
 # ---------------------------------------------------------------- ana --
 
+def _ad(s: str) -> str:
+    """Ad karşılaştırması için: küçük harf, Türkçe harfler ve şapkalar sadeleşir
+    ("Gurur ve Önyargı" == "Gurur_ve_Onyargi")."""
+    s = unicodedata.normalize("NFKD", trlow(s).replace("ı", "i"))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r"[\s_\-]+", " ", s).strip()
+
+
 def find_epub(stem: str):
-    """Kitabın doğru metni olacak EPUB'ı epubs/ içinde adına göre bulur.
+    """Kitabın doğru metni olacak EPUB'ı adına göre bulur: önce epubs/ornekler/
+    (karşılaştırma için konan örnek EPUB'lar), sonra epubs/ (eski düzen).
     build_epub.py'nin bu kitap için ÜRETTİĞİ EPUB (epubs/<kitap>.epub) hariç tutulur:
     yoksa araç bizim kendi çıktımızı "doğru metin" sanıp %0 hata gösterirdi."""
-    key = trlow(re.split(r"_test|_\d+$", stem)[0]).replace("_", " ")
-    for p in sorted((ROOT / "epubs").glob("*.epub")):
-        if trlow(p.stem) == trlow(stem):
-            continue
-        if trlow(p.stem).startswith(key) or key in trlow(p.stem):
-            return p
+    key = _ad(re.split(r"_test|_\d+$", stem)[0])
+    for d in (ROOT / "epubs" / "ornekler", ROOT / "epubs"):
+        for p in sorted(d.glob("*.epub")):
+            if _ad(p.stem) == _ad(stem):
+                continue
+            if _ad(p.stem).startswith(key) or key in _ad(p.stem):
+                return p
     return None
 
 

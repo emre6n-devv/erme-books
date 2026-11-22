@@ -1,6 +1,7 @@
 # Bağımlılıklar ve derleme çıktıları
 node_modules/
 dist/
+build_staging/
 out/
 __pycache__/
 *.pyc
@@ -20,6 +21,10 @@ epubs/*
 !epubs/.gitkeep
 assets/mascots/*
 !assets/mascots/.gitkeep
+
+# Paketlenmiş Tesseract (kurulum_olustur.ps1 üretir) ve Tesseract Türkçe modeli (kurulum.bat indirir)
+tesseract/
+tessdata/
 
 # Büyük sözlük dosyaları (README'deki adresten indirilir)
 tr_TR.aff

@@ -15,7 +15,8 @@ VISION_MODEL = os.environ.get("KITAP_VISION_MODEL") or "qwen2.5vl:7b"    # qwen3
                                    # çok daha hızlı ve öngörülebilir çalışıyor
 TEXT_MODEL = "hf.co/ytu-ce-cosmos/Turkish-Llama-8b-Instruct-v0.1-GGUF:Q4_K_M"  # Türkçe düzeltme aşaması için (şu an kullanılmıyor)
 REQUEST_TIMEOUT = 300             # saniye, büyük/karmaşık sayfalarda arttır
-NUM_CTX = 16384                   # bağlam penceresi
+# Tarama kalitesi uygulamada donanıma göre seçilir (KITAP_DPI / KITAP_NUM_CTX); komut satırında boşsa buradakiler.
+NUM_CTX = int(os.environ.get("KITAP_NUM_CTX") or 16384)   # bağlam penceresi: büyüdükçe ekran kartında daha çok yer kaplar
 
 # --- İki aşamalı işlem ---
 # AŞAMA 1 (görüntü): VISION_MODEL, sayfayı SADE bir prompt'la okur (sadece
@@ -27,7 +28,7 @@ NUM_CTX = 16384                   # bağlam penceresi
 APPLY_TEXT_CORRECTION = False  # LLM tabanlı düzeltme güvenilmez bulundu - fix_known.py (deterministik) kullanılıyor
 
 # --- Sayfa görüntüleme ayarları ---
-DPI = 450                        # zamanın önemi yoksa yüksek tut - küçük/eski punto için daha net görüntü
+DPI = int(os.environ.get("KITAP_DPI") or 450)   # yüksek = küçük/eski puntoda daha net ama daha yavaş
 
 # --- Klasörler ---
 INPUT_DIR = "input"

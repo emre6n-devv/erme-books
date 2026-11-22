@@ -1,10 +1,11 @@
 ﻿# kurulum.ps1 - ERME BOOKS · Hayat Ağacı için tek tıkla kurulum (Windows 10/11)
 # kurulum.bat tarafından çalıştırılır. Yaptıkları:
-#   1) Node.js, Python ve Ollama kurulu mu bakar; eksikse winget ile kurar
+#   1) Node.js, Python, Tesseract ve Ollama kurulu mu bakar; eksikse winget ile kurar
 #   2) Python paketlerini (requirements.txt) ve uygulama bağımlılıklarını (npm install) kurar
-#   3) Türkçe sözlüğü (tdd-ai/hunspell-tr, MIT) indirir
-#   4) Bilgisayarın RAM'ine göre uygun yerel yapay zekâ modellerini indirir (onay sorar)
+#   3) Türkçe sözlüğü (tdd-ai/hunspell-tr, MIT) ve Tesseract Türkçe modelini indirir
+#   4) Bilgisayarın donanımına (RAM, ekran kartı) uygun yerel yapay zekâ modellerini indirir (onay sorar)
 #   5) Uygulamayı başlatır
+# Ekran kartı olmayan, az RAM'li bilgisayarlar da çalışır: "Hafif" profil Tesseract + glm-ocr ile işlemcide okur.
 # Tekrar çalıştırmak güvenlidir: kurulu olanlar atlanır.
 
 $ErrorActionPreference = 'Continue'   # pip/ollama ilerleme mesajları stderr'e yazar; bunlar hata sayılmasın
@@ -22,7 +23,7 @@ function Hata($t) { Write-Host "  [hata] $t" -ForegroundColor Red }
 function PathTazele {
   $m = [Environment]::GetEnvironmentVariable('Path', 'Machine')
   $u = [Environment]::GetEnvironmentVariable('Path', 'User')
-  $extra = @("$env:ProgramFiles\nodejs", "$env:LOCALAPPDATA\Programs\Python\Launcher", "$env:LOCALAPPDATA\Programs\Ollama", "$env:ProgramFiles\Ollama")
+  $extra = @("$env:ProgramFiles\nodejs", "$env:LOCALAPPDATA\Programs\Python\Launcher", "$env:LOCALAPPDATA\Programs\Ollama", "$env:ProgramFiles\Ollama", "$env:ProgramFiles\Tesseract-OCR", "${env:ProgramFiles(x86)}\Tesseract-OCR")
   $env:Path = (@($m, $u) + $extra | Where-Object { $_ }) -join ';'
 }
 function Var($cmd) { return [bool](Get-Command $cmd -ErrorAction SilentlyContinue) }
@@ -44,7 +45,7 @@ Write-Host '  ---------------------------------'
 PathTazele
 
 # ---------------------------------------------------------------- 1. programlar
-Baslik '1/5 Gerekli programlar'
+Baslik '1/6 Gerekli programlar'
 
 if (Var 'node') { Tamam "Node.js $(node --version)" }
 else {
@@ -64,6 +65,26 @@ if (-not $Py) {
 }
 if ($Py) { Tamam "$(& $Py --version 2>&1)" } else { Hata "Python kurulamadı. https://www.python.org adresinden kur (ilk ekranda 'Add python.exe to PATH' kutusunu işaretle)."; Read-Host 'Kapatmak için Enter'; exit 1 }
 
+# Tesseract: işlemcide hızlı okuma (Hafif / Çok hızlı profiller). UB-Mannheim kurulumu PATH'e eklemez,
+# o yüzden varsayılan klasöre de bakılır; uygulama da aynı yerlere bakar.
+function TesseractBul {
+  if ($env:KITAP_TESSERACT -and (Test-Path $env:KITAP_TESSERACT)) { return $env:KITAP_TESSERACT }
+  $c = Get-Command 'tesseract' -ErrorAction SilentlyContinue
+  if ($c) { return $c.Source }
+  foreach ($d in @("$env:ProgramFiles\Tesseract-OCR", "${env:ProgramFiles(x86)}\Tesseract-OCR", "$env:LOCALAPPDATA\Programs\Tesseract-OCR", (Join-Path $Root 'tesseract'))) {
+    $e = Join-Path $d 'tesseract.exe'
+    if (Test-Path $e) { return $e }
+  }
+  return $null
+}
+$Tess = TesseractBul
+if (-not $Tess) {
+  [void](WingetKur 'UB-Mannheim.TesseractOCR' 'Tesseract OCR')
+  $Tess = TesseractBul
+}
+if ($Tess) { Tamam "Tesseract ($Tess)" }
+else { Uyari 'Tesseract kurulamadı. https://github.com/UB-Mannheim/tesseract/wiki adresinden kurabilirsin; o olmadan Hafif/Çok hızlı profiller çalışmaz (diğerleri çalışır).' }
+
 if (Var 'ollama') { Tamam 'Ollama kurulu' }
 else {
   [void](WingetKur 'Ollama.Ollama' 'Ollama')
@@ -71,11 +92,11 @@ else {
 }
 
 # ---------------------------------------------------------------- 2. bağımlılıklar
-Baslik '2/5 Python paketleri'
+Baslik '2/6 Python paketleri'
 & $Py -m pip install --disable-pip-version-check -r (Join-Path $Root 'requirements.txt') | Out-Host
 if ($LASTEXITCODE -eq 0) { Tamam 'Python paketleri kuruldu' } else { Uyari 'Bazı Python paketleri kurulamadı; yukarıdaki mesaja bak.' }
 
-Baslik '3/5 Uygulama bağımlılıkları (Electron, Three.js)'
+Baslik '3/6 Uygulama bağımlılıkları (Electron, Three.js)'
 Push-Location (Join-Path $Root 'uygulama-electron')
 & npm.cmd install --no-fund --no-audit | Out-Host
 $npmOk = $LASTEXITCODE -eq 0
@@ -83,7 +104,7 @@ Pop-Location
 if ($npmOk) { Tamam 'npm install bitti' } else { Hata 'npm install başarısız oldu; internet bağlantını kontrol edip tekrar dene.'; Read-Host 'Kapatmak için Enter'; exit 1 }
 
 # ---------------------------------------------------------------- 3. sözlük
-Baslik '4/5 Türkçe sözlük (tdd-ai/hunspell-tr)'
+Baslik '4/6 Türkçe sözlük (tdd-ai/hunspell-tr)'
 $base = 'https://github.com/tdd-ai/hunspell-tr/raw/main'
 foreach ($f in @('tr_TR.aff', 'tr_TR.dic')) {
   $hedef = Join-Path $Root $f
@@ -100,17 +121,39 @@ foreach ($f in @('tr_TR.aff', 'tr_TR.dic')) {
   }
 }
 
-# ---------------------------------------------------------------- 4. modeller
-Baslik '5/5 Yerel yapay zekâ modelleri'
-$ramGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
-if ($ramGB -ge 15) {
-  $seviye = 'standart (en doğru)'; $modeller = @('qwen2.5vl:7b', 'glm-ocr', 'gemma3:12b', 'qwen2.5:14b-instruct'); $boyut = '~25 GB'
-} elseif ($ramGB -ge 7) {
-  $seviye = 'hafif'; $modeller = @('qwen2.5vl:3b', 'glm-ocr', 'gemma3:4b', 'qwen2.5:7b-instruct'); $boyut = '~12 GB'
-} else {
-  $seviye = 'en hafif (düzeltme kural tabanlı çalışır)'; $modeller = @('qwen2.5vl:3b', 'glm-ocr'); $boyut = '~5 GB'
+# ---------------------------------------------------------------- 5. Tesseract Türkçe modeli
+Baslik '5/6 Tesseract Türkçe modeli'
+$tdDir = Join-Path $Root 'tessdata'
+$tdTur = Join-Path $tdDir 'tur.traineddata'
+if ((Test-Path $tdTur) -and ((Get-Item $tdTur).Length -gt 1MB)) { Tamam 'tessdata\tur.traineddata zaten var' }
+else {
+  try {
+    New-Item -ItemType Directory -Force -Path $tdDir | Out-Null
+    Bilgi 'tur.traineddata indiriliyor (tesseract-ocr/tessdata_best, Apache 2.0)...'
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $ProgressPreference = 'SilentlyContinue'
+    Invoke-WebRequest -Uri 'https://github.com/tesseract-ocr/tessdata_best/raw/main/tur.traineddata' -OutFile $tdTur -UseBasicParsing -ErrorAction Stop
+    if ((Get-Item $tdTur).Length -lt 1MB) { throw 'dosya beklenenden küçük' }
+    Tamam "tur.traineddata indirildi ($([math]::Round((Get-Item $tdTur).Length / 1MB, 1)) MB)"
+  } catch {
+    Uyari "tur.traineddata indirilemedi ($($_.Exception.Message)). https://github.com/tesseract-ocr/tessdata_best adresinden indirip tessdata klasörüne koy."
+  }
 }
-Bilgi "Bilgisayarında $ramGB GB RAM var -> önerilen set: $seviye"
+
+# ---------------------------------------------------------------- 6. modeller
+Baslik '6/6 Yerel yapay zekâ modelleri'
+$ramGB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
+$gpuAd = (Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) -join ', '
+$gpu = $gpuAd -match 'NVIDIA|GeForce|Quadro|RTX|Radeon RX|Radeon Pro|Arc A'
+# Profiller uygulamadakiyle aynı: Hafif (Tesseract + glm-ocr) işlemciyle her bilgisayarda çalışır;
+# Standart/Güçlü ekran kartı ister. Burada indirilmeyenler sonradan uygulamadaki Modeller panelinden indirilebilir.
+$modeller = @('glm-ocr'); $seviye = 'Hafif (işlemcide çalışır)'; $boyut = '~2 GB'
+if ($gpu -and $ramGB -ge 15) {
+  $modeller += @('qwen2.5vl:7b', 'qwen2.5:7b-instruct'); $seviye = 'Standart'; $boyut = '~13 GB'
+  if ($ramGB -ge 30) { $modeller += @('gemma3:12b', 'qwen2.5:14b-instruct'); $seviye = 'Güçlü'; $boyut = '~30 GB' }
+}
+Bilgi "RAM: $ramGB GB, ekran kartı: $(if ($gpuAd) { $gpuAd } else { 'bulunamadı' })"
+Bilgi "Önerilen en üst profil: $seviye (her kitapta başlamadan önce profil yine seçilebilir)"
 Bilgi ("Modeller: " + ($modeller -join ', ') + "  (toplam indirme $boyut)")
 
 if (-not (Var 'ollama')) {
@@ -140,7 +183,8 @@ if (-not (Var 'ollama')) {
 # ---------------------------------------------------------------- 5. başlat
 Write-Host ''
 Write-Host '  Kurulum tamamlandı. Bundan sonra uygulamayı baslat.bat ile açabilirsin.' -ForegroundColor Green
-Write-Host '  Ayrıntılı kullanım: KULLANIM_KILAVUZU.md'
+$kilavuz = if (Test-Path (Join-Path $Root 'KULLANIM_KILAVUZU.md')) { 'KULLANIM_KILAVUZU.md' } else { 'README.md' }
+Write-Host "  Ayrıntılı kullanım: $kilavuz"
 $ac = Read-Host '  Uygulama şimdi açılsın mı? (E/H)'
 if ($ac -match '^[EeYy]') {
   Start-Process -FilePath 'npm.cmd' -ArgumentList 'start' -WorkingDirectory (Join-Path $Root 'uygulama-electron') -WindowStyle Minimized

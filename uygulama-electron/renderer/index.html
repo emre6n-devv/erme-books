@@ -43,11 +43,8 @@
     </div>
     </div>
   </div>
-  <label class="quality-pick" title="Grafik kalitesi: Otomatik modda kare hızı 35'in altına düşerse gölge, parçacık ve hayvan yoğunluğu kendiliğinden hafifletilir">
-    <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg>
-    <select id="qualitySel" aria-label="Grafik kalitesi"><option value="oto">Otomatik</option><option value="yuksek">Yüksek</option><option value="orta">Orta</option><option value="dusuk">Düşük</option></select>
-  </label>
-  <span class="ollama" id="ollamaBox" role="button" tabindex="0"><span class="dot" id="ollamaDot"></span><span id="ollamaText">Ollama kontrol ediliyor…</span></span>
+  <span class="ollama" id="ollamaBox" role="button" tabindex="0" title="Modeller: ayrıntı için tıkla"><span class="dot" id="ollamaDot"></span><span id="ollamaText">Ollama kontrol ediliyor…</span></span>
+  <button class="top-nav" id="settingsBtn" title="Ayarlar: modeller, tarama kalitesi, görünüm, kurulum (Ctrl+,)"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>Ayarlar</span></button>
   <button class="btn ghost icon-only" id="refreshBooks" title="Kitap listesini yenile"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button>
 </header>
 
@@ -78,7 +75,9 @@
         <div class="hl-label"></div>
         <button class="hl-back" id="hlBack"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Ağaca dön</button>
         <div class="hl-card"><div class="hl-cv"></div><div class="hl-tx"><b></b><span class="hl-au"></span><small class="hl-meta"></small><button></button></div></div>
-        <p class="hl-hint">Orta tuş: etrafa bak · Tekerlek: yaklaş · Sol tık: kitabı seç / tutup taşı · Sağ tık: vur · Arkadaki kemere tık: dışarı çık · EPUB sürükle-bırak: rafa ekle</p>
+        <div class="hl-mode" role="radiogroup" aria-label="Kütüphane modu"><button role="radio" data-hm="klasik">Klasik</button><button role="radio" data-hm="buyulu"><span aria-hidden="true">✦</span> Büyülü</button></div>
+        <div class="hl-tips" role="status" aria-live="polite"></div>
+        <button class="hl-help" title="Kontroller" aria-label="Kontrolleri göster">?</button>
       </div>
     </section>
     <!-- 1 OCR -->
@@ -385,15 +384,58 @@
   <button class="modal-x bv-x" id="bdClose">✕</button>
 </div>
 
+<!-- Okuma profili: OCR başlamadan önce her profilin bu kitapta, bu bilgisayarda süresi ve tahmini hatası -->
+<div class="modal" id="profModal" role="dialog" aria-modal="true" aria-labelledby="profTitle">
+  <div class="modal-box prof-box">
+    <h2 id="profTitle">Okuma profili</h2>
+    <p class="muted" id="profSub">Süreler hesaplanıyor…</p>
+    <div class="prof-katman" id="profKatman"></div>
+    <div class="prof-list" id="profList"></div>
+    <p class="prof-not muted">Seçtiğin profil Ayarlar › Model Yönetimi'ne de uygulanır. Süreler tahminidir; bu bilgisayarda kitap okudukça kendini düzeltir.</p>
+    <div class="actions">
+      <button class="btn accent" id="profOk" disabled>Başlat</button>
+      <button class="btn plain" id="profCancel">Vazgeç</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
+<!-- İlk Kurulum Sihirbazı: Ollama, sözlük ve modeller tek tıkla -->
+<div class="setup-view" id="setupView" hidden>
+  <div class="sv-card" role="dialog" aria-labelledby="svTitle">
+    <div class="sv-head"><div class="sv-mark">E</div><div><h2 id="svTitle">Hoş geldin! Birkaç adımda hazırız</h2>
+      <p>ERME BOOKS kitaplarını tamamen kendi bilgisayarında, yerel yapay zekâ modelleriyle işler. Aşağıdaki adımları sırayla tamamla; her biri tek tıkla yapılır, terminal gerekmez.</p></div></div>
+    <ol class="sv-steps" id="svSteps"></ol>
+    <div class="sv-foot"><span class="muted" id="svNote"></span><span class="grow"></span><button class="btn plain" id="svLater">Daha sonra</button><button class="btn accent" id="svDone" disabled>Başla →</button></div>
+  </div>
+</div>
+
 <!-- Model yönetimi: donanım ve yerel yapay zekâ modelleri -->
-<div class="modal mm-modal" id="modelModal">
-  <div class="modal-box mm-box">
-    <div class="mm-head"><h2>Model Yönetimi</h2><span class="grow"></span><button class="btn plain sm" id="mmRefresh" title="Donanımı ve kurulu modelleri yeniden kontrol et">↻ Yenile</button><button class="modal-x mm-x" id="mmClose" aria-label="Kapat">✕</button></div>
-    <div class="mm-sys" id="mmSys"></div>
-    <div class="mm-mode" role="radiogroup" aria-label="Seçim modu"><button data-m="otomatik">Otomatik · donanıma göre</button><button data-m="elle">Elle seç</button></div>
-    <div class="mm-roles" id="mmRoles"></div>
-    <div class="mm-foot" id="mmFoot"></div>
+<!-- Ayarlar: tüm seçenekler tek pencerede, soldan sekmeli -->
+<div class="modal mm-modal" id="modelModal" role="dialog" aria-modal="true" aria-labelledby="stTitle">
+  <div class="modal-box mm-box st-box">
+    <div class="mm-head"><h2 id="stTitle">Ayarlar</h2><span class="grow"></span><button class="btn plain sm" id="mmRefresh" title="Donanımı ve kurulu modelleri yeniden kontrol et">↻ Yenile</button><button class="modal-x mm-x" id="mmClose" aria-label="Kapat">✕</button></div>
+    <div class="st-wrap">
+      <nav class="st-nav" id="stNav" role="tablist" aria-label="Ayar bölümleri">
+        <button role="tab" data-st="models"><b>Modeller</b><small>hangi iş hangi modelle</small></button>
+        <button role="tab" data-st="scan"><b>Tarama kalitesi</b><small id="stNavScan">çözünürlük · hız</small></button>
+        <button role="tab" data-st="view"><b>Görünüm</b><small id="stNavView">grafik kalitesi</small></button>
+        <button role="tab" data-st="setup"><b>Kurulum</b><small id="stNavSetup">Ollama · sözlük · indirme</small></button>
+        <button role="tab" data-st="about"><b>Hakkında</b><small>sürüm · klasörler</small></button>
+      </nav>
+      <div class="st-body">
+        <section class="st-pane" data-pane="models" role="tabpanel">
+          <div class="mm-sys" id="mmSys"></div>
+          <div class="mm-mode" role="radiogroup" aria-label="Seçim modu"><button data-m="otomatik">Otomatik · donanıma göre</button><button data-m="elle">Elle seç</button></div>
+          <div class="mm-roles" id="mmRoles"></div>
+          <div class="mm-foot" id="mmFoot"></div>
+        </section>
+        <section class="st-pane" data-pane="scan" role="tabpanel"><div id="stScan"></div></section>
+        <section class="st-pane" data-pane="view" role="tabpanel"><div id="stView"></div></section>
+        <section class="st-pane" data-pane="setup" role="tabpanel"><div id="stSetup"></div></section>
+        <section class="st-pane" data-pane="about" role="tabpanel"><div id="stAbout"></div></section>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -417,6 +459,7 @@
 <script src="../node_modules/three/build/three.min.js"></script>
 <script src="quality.js"></script><script src="book3d.js"></script><script src="fauna2d.js"></script><script src="scenery3d.js"></script><script src="tree3d.js"></script><script src="hollowLibrary3d.js"></script><script src="coverGenerator.js"></script>
 <script src="scene.js"></script>
+<script src="secondaryAppBridge.js"></script>
 <script src="renderer.js"></script>
 </body>
 </html>

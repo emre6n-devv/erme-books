@@ -189,7 +189,9 @@
         rockMesh(r, V(3.0, 3.6, 2.2), '#8c8a80', 1.7, snowU), rockMesh(r, V(2.0, 2.6, 1.6), '#8f8c82', 3.1, snowU),
         rockMesh(r, V(2.8, 3.4, 2.1), '#85837a', 5.3, snowU), rockMesh(r, V(1.1, 0.9, 0.9), '#93908a', 7.9, snowU), rockMesh(r, V(1.6, 1.3, 1.2), '#8a877e', 9.4, snowU),
       ];
-      [[-7.6, gy - 0.5, -9.2], [-5.1, gy - 0.3, -8.8], [-9.6, gy + 0.9, -10.8], [-3.9, gy - 0.25, -7.6], [-9.0, gy - 0.3, -7.2]].forEach((p, i) => { rocks[i].position.set(...p); rockGrp.add(rocks[i]); });
+      [[-7.6, gy - 0.5, -9.2], [-5.1, gy - 0.3, -8.8], [-9.6, gy + 0.9, -10.8], [-3.9, gy - 0.25, -7.6], [-9.0, gy - 0.3, -7.2]].forEach((p, i) => {
+          rocks[i].position.set(...p); rockGrp.add(rocks[i]); });
+      const mouthDark = new T.Color('#2a2119'), WHITE = new T.Color('#ffffff');
       const caveTex = (() => { const c = mkCanvas(256, 256), x = c.getContext('2d'), g = x.createRadialGradient(128, 170, 6, 128, 150, 140);
         g.addColorStop(0, 'rgba(255,190,110,1)'); g.addColorStop(0.18, 'rgba(200,110,50,1)'); g.addColorStop(0.5, 'rgba(60,32,18,1)'); g.addColorStop(1, 'rgba(18,12,8,1)'); x.fillStyle = g; x.fillRect(0, 0, 256, 256); return texOf(c); })();
       // ağız: girintili çıkıntılı, yamuk bir yarık
@@ -262,8 +264,12 @@
       for (let k = 0; k < 7; k++) { const a = r() * 6.283, d = 0.3 + r() * 0.55; const lp = new T.Mesh(new T.CircleGeometry(0.13 + r() * 0.07, 16, 0.3, 5.9).rotateX(-Math.PI / 2), new T.MeshStandardMaterial({ color: '#4e7a3a', roughness: 0.6 }));
         lp.position.set(pond.x + Math.cos(a) * d * pond.rx, pond.y + 0.006, pond.z + Math.sin(a) * d * pond.rz); lp.rotation.y = r() * 6; lilies.add(lp);
         if (k % 2 === 0) { const fl = lotus(); fl.position.copy(lp.position).add(V(0.03, 0.005, 0)); fl.rotation.y = r() * 6; blooms.add(fl); } }
+      const shoreStones = [];
       for (let k = 0; k < 9; k++) { const a = 1.2 + k * 0.45 + r() * 0.2, x = pond.x + Math.cos(a) * pond.rx * 1.12, z = pond.z + Math.sin(a) * pond.rz * 1.12;
-        const st = rockMesh(r, V(0.18 + r() * 0.15, 0.12 + r() * 0.1, 0.16 + r() * 0.12), '#8a8a80', r() * 9, snowU); st.position.set(x, ground(x, z) - 0.02, z); geo.add(st); }
+        const st = rockMesh(r, V(0.18 + r() * 0.15, 0.12 + r() * 0.1, 0.16 + r() * 0.12), '#8a8a80', r() * 9, snowU); st.position.set(x, ground(x, z) - 0.02, z); geo.add(st);
+        st.updateMatrixWorld(true); shoreStones.push(V(x, new T.Box3().setFromObject(st).max.y - 0.01, z)); }
+      // göl dibi çamuru: yazın su çekilince kıyıda görünür
+      const mud = new T.Mesh(new T.CircleGeometry(1, 48).rotateX(-Math.PI / 2), new T.MeshStandardMaterial({ color: '#7d6a48', roughness: 1 })); mud.scale.set(pond.rx, 1, pond.rz); mud.position.set(pond.x, pond.y - 0.012, pond.z); geo.add(mud);
 
       // ================= UFUK: deniz ve yelkenli =================
       const seaMat = waterMat('#2f6f8f', '#6fb3c4', { scale: 0.35 }); seaMat.uniforms.uRadial.value = -1;
@@ -343,12 +349,261 @@
         }
         sets.kis = { g, weather: null, flyers: Array(6).fill('robin'), butterflies: 0, fall: 0, owls: true };
       }
+
+      // =====================================================================
+      // MEVSİMLERE ÖZGÜ YAPILAR, AYRINTILAR ve GİZLİ GEÇİTLER (ikinci uygulamanın kapıları)
+      // Her mevsimin grubu sets[s].g içindedir (opaklıkla yumuşak geçiş); hareketliler XS[s] ile güncellenir.
+      // =====================================================================
+      const XS = {}, PORTAL = {};
+      let hoverPortal = null;
+      const glowSp = (col, op, sc) => { const sp = new T.Sprite(new T.SpriteMaterial({ map: glowTex, color: col, transparent: true, depthWrite: false, blending: T.AdditiveBlending, opacity: op })); sp.scale.setScalar(sc); return sp; };
+      const addPortal = (s, pos, rad) => {
+        const hit = new T.Mesh(new T.SphereGeometry(rad, 12, 8), new T.MeshBasicMaterial({ visible: false })); hit.position.copy(pos); hit.userData.idx = 'portal:' + s; scene.add(hit);
+        PORTAL[s] = { hit, pos: pos.clone(), hk: 0 };
+      };
+      const ptsOf = (list, mat) => { const P = new Float32Array(list.length * 3); list.forEach((p, i) => p.toArray(P, i * 3)); const gg = new T.BufferGeometry(); gg.setAttribute('position', new T.BufferAttribute(P, 3)); const m = new T.Points(gg, mat); m.frustumCulled = false; return m; };
+      const canvasTex = (w, h, draw) => { const c = mkCanvas(w, h); draw(c.getContext('2d'), w, h); return texOf(c); };
+      const caveAt = (lx, ly, lz) => V(den.x + Math.cos(0.25) * lx + Math.sin(0.25) * lz, den.y - 0.08 + ly, den.z - Math.sin(0.25) * lx + Math.cos(0.25) * lz);   // mağara ağzına göre yer
+      const surfaceOn = (objs, x, z) => { const rc = new T.Raycaster(V(x, 30, z), V(0, -1, 0)); const h = rc.intersectObjects(objs, true)[0]; return h ? h.point : null; };
+      const chance = (p, dt) => Math.random() < p * Math.min(2, dt * 60);   // kare hızından bağımsız olasılık
+      const tmpM = new T.Matrix4(), tmpV = V(0, 0, 0), tmpQ = new T.Quaternion(), tmpS = V(1, 1, 1);
+
+      // ---------- İLKBAHAR: gür şelale, kır çiçekleri, sarmaşıklı mağara, şelale perdesinin ardındaki geçit ----------
+      { const S = sets.ilkbahar, g = S.g;
+        S.dragonflies = 3;
+        const flowerTex = (petal, heart, n = 8) => canvasTex(64, 64, (x) => { x.translate(32, 32); for (let i = 0; i < n; i++) { x.rotate((Math.PI * 2) / n); x.fillStyle = petal; x.beginPath(); x.ellipse(0, -13, 5.5, 12, 0, 0, 6.283); x.fill(); } x.fillStyle = heart; x.beginPath(); x.arc(0, 0, 6, 0, 6.283); x.fill(); });
+        rockGrp.updateMatrixWorld(true);
+        const daisies = [], violets = [];
+        for (let i = 0; i < 300 && daisies.length + violets.length < 150; i++) {
+          const rk = rocks[i % rocks.length], bb = new T.Box3().setFromObject(rk), x = lerp(bb.min.x, bb.max.x, 0.15 + r() * 0.7), z = lerp(bb.min.z, bb.max.z, 0.15 + r() * 0.7);
+          const p = surfaceOn([rk], x, z); if (!p) continue; p.y += 0.03; (r() < 0.6 ? daisies : violets).push(p);
+        }
+        for (let i = 0; i < 70; i++) { const a = r() * 6.283, d = 1.2 + r() * 0.35, x = pond.x + Math.cos(a) * pond.rx * d, z = pond.z + Math.sin(a) * pond.rz * d; (i % 3 ? daisies : violets).push(V(x, ground(x, z) + 0.04, z)); }
+        for (let i = 0; i < 60; i++) { const x = -6.4 + r() * 3.6, z = 1.9 + r() * 2.4; (i % 2 ? daisies : violets).push(V(x, ground(x, z) + 0.04, z)); }
+        g.add(ptsOf(daisies, new T.PointsMaterial({ map: flowerTex('#ffffff', '#f2c230'), size: 0.13, transparent: true, alphaTest: 0.35 })));
+        g.add(ptsOf(violets, new T.PointsMaterial({ map: flowerTex('#8a5ad0', '#f4e06a', 5), size: 0.12, transparent: true, alphaTest: 0.35 })));
+        // mağara ağzı sarmaşıklarla kapalı
+        const ivyTex = canvasTex(256, 256, (x) => { let s2 = 17; const rr = () => ((s2 = (s2 * 16807) % 2147483647) / 2147483647);
+          for (let v = 0; v < 26; v++) { let px = 8 + v * 9.5 + rr() * 6, py = 0; x.strokeStyle = '#3f5a26'; x.lineWidth = 2; x.beginPath(); x.moveTo(px, 0);
+            while (py < 256) { py += 10; px += (rr() - 0.5) * 6; x.lineTo(px, py); } x.stroke();
+            for (let yy = 6; yy < 256; yy += 9 + rr() * 6) { const lx = 8 + v * 9.5 + (rr() - 0.5) * 12; x.fillStyle = ['#4f7a2e', '#5e8f36', '#3e6524', '#6aa03e'][Math.floor(rr() * 4)];
+              x.beginPath(); x.ellipse(lx, yy, 4 + rr() * 3, 3 + rr() * 2, rr() * 3, 0, 6.283); x.fill(); } } });
+        const ivy = new T.Mesh(new T.PlaneGeometry(1.75, 1.35), new T.MeshStandardMaterial({ map: ivyTex, transparent: true, alphaTest: 0.4, side: T.DoubleSide, roughness: 0.8 }));
+        ivy.position.copy(caveAt(0, 0.62, 0.1)); ivy.rotation.y = 0.25; g.add(ivy);
+        // şelale perdesinin ardında hafifçe parlayan kaya oyuğu
+        const nichePos = V(fx + 0.04, lerp(fbot, ftop, 0.42), -7.5);
+        const niche = new T.Mesh(new T.CircleGeometry(1, 28), new T.MeshBasicMaterial({ color: '#16262c', transparent: true })); niche.scale.set(0.3, 0.46, 1); niche.position.copy(nichePos); niche.rotation.y = 0.15; g.add(niche);
+        const nGlow = glowSp('#bdf3ff', 0.5, 1.4); nGlow.position.copy(nichePos).add(V(0, 0, 0.02)); g.add(nGlow);
+        addPortal('ilkbahar', nichePos.clone().add(V(0, 0, 0.25)), 0.55);
+        // polen zerreleri
+        const NPo = 70, pol = Array.from({ length: NPo }, () => ({ p: V(-6 + r() * 12, 0.3 + r() * 2.5, -4 + r() * 7), ph: r() * 6 }));
+        const polPts = ptsOf(pol.map((o) => o.p), new T.PointsMaterial({ map: glowTex, color: '#fff1a8', size: 0.05, transparent: true, depthWrite: false, opacity: 0.8, blending: T.AdditiveBlending })); g.add(polPts);
+        // kurbağalar: kıyı taşlarında zıplar, ara sıra gırtlağını şişirir
+        const frogMat = new T.MeshStandardMaterial({ color: '#5f9a3a', roughness: 0.5 }), frogBelly = new T.MeshStandardMaterial({ color: '#d4e09a', roughness: 0.6 }), black = new T.MeshBasicMaterial({ color: '#111111' });
+        const makeFrog = () => { const f = new T.Group(); const b = new T.Mesh(new T.SphereGeometry(0.06, 12, 8), frogMat); b.scale.set(1.3, 0.72, 1); b.position.y = 0.045; f.add(b);
+          const hd = new T.Mesh(new T.SphereGeometry(0.045, 12, 8), frogMat); hd.scale.set(1.1, 0.72, 1.05); hd.position.set(0.065, 0.06, 0); f.add(hd);
+          for (const sd of [-1, 1]) { const e = new T.Mesh(new T.SphereGeometry(0.017, 8, 6), frogMat); e.position.set(0.075, 0.09, sd * 0.026); f.add(e); const pu = new T.Mesh(new T.SphereGeometry(0.008, 6, 4), black); pu.position.set(0.088, 0.096, sd * 0.03); f.add(pu);
+            const lg = new T.Mesh(new T.SphereGeometry(0.03, 8, 6), frogMat); lg.scale.set(1.5, 0.55, 0.7); lg.position.set(-0.045, 0.02, sd * 0.058); f.add(lg); }
+          const th = new T.Mesh(new T.SphereGeometry(0.03, 8, 6), frogBelly); th.scale.set(0.8, 0.6, 1); th.position.set(0.085, 0.035, 0); f.add(th);
+          f.scale.setScalar(1.6); g.add(f); return { f, th }; };
+        const frogs = [0, 3, 6].map((at) => ({ ...makeFrog(), at, wait: 1 + r() * 4, hop: null, croak: r() * 5 }));
+        frogs.forEach((F2) => { F2.f.position.copy(shoreStones[F2.at]); F2.f.rotation.y = r() * 6; });
+        // şelale dibinde genişleyen su halkaları
+        const rings = [0, 1, 2].map((k) => { const m = new T.Mesh(new T.RingGeometry(0.12, 0.16, 32).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ color: '#e6f6ff', transparent: true, depthWrite: false, opacity: 0 })); m.position.set(fx + 0.05, fbot + 0.03, -7.0); g.add(m); return { m, ph: k / 3 }; });
+        XS.ilkbahar = (dt, t, k) => {
+          const P = polPts.geometry.attributes.position; pol.forEach((o, i) => { o.p.x += (Math.sin(t * 0.3 + o.ph) * 0.06 + 0.02) * dt; o.p.y += Math.sin(t * 0.7 + o.ph * 2) * 0.03 * dt; if (o.p.x > 6) o.p.x = -6; P.setXYZ(i, o.p.x, o.p.y, o.p.z); }); P.needsUpdate = true;
+          for (const F2 of frogs) {
+            if (F2.hop) { F2.hop.t += dt / 0.55; const u = smooth(Math.min(1, F2.hop.t)); F2.f.position.lerpVectors(F2.hop.from, F2.hop.to, u); F2.f.position.y += Math.sin(Math.min(1, F2.hop.t) * Math.PI) * 0.28; F2.f.rotation.z = (0.5 - u) * 0.5;
+              if (F2.hop.t >= 1) { F2.hop = null; F2.f.rotation.z = 0; F2.wait = 2 + r() * 5; } }
+            else { F2.wait -= dt; if (F2.wait < 0) { const n = (F2.at + (r() < 0.5 ? 1 : 8)) % 9; if (!frogs.some((o) => o !== F2 && o.at === n)) { F2.hop = { t: 0, from: F2.f.position.clone(), to: shoreStones[n].clone() }; F2.at = n; F2.f.rotation.y = Math.atan2(-(F2.hop.to.z - F2.hop.from.z), F2.hop.to.x - F2.hop.from.x); } else F2.wait = 1; } }
+            F2.croak -= dt; const c = F2.croak < 0.6 && F2.croak > 0 ? Math.max(0, Math.sin(F2.croak / 0.6 * Math.PI * 3)) : 0; F2.th.scale.set(0.8 + c * 0.9, 0.6 + c * 0.8, 1 + c * 0.6); if (F2.croak < 0) F2.croak = 4 + r() * 7;
+          }
+          rings.forEach((R2) => { const u = (t * 0.42 + R2.ph) % 1; R2.m.scale.setScalar(1 + u * 5); R2.m.material.opacity = (1 - u) * 0.45 * clamp(G.fall - 0.3) * k; });
+          nGlow.material.opacity = (0.45 + Math.sin(t * 1.7) * 0.1 + PORTAL.ilkbahar.hk * 0.5) * k; nGlow.scale.setScalar(1.35 + Math.sin(t * 1.7) * 0.08 + PORTAL.ilkbahar.hk * 0.4);
+          fallMat.uniforms.uOp.value = clamp(G.fall) * (1 - PORTAL.ilkbahar.hk * 0.25 * k);   // üstüne gelince perde incelir, ardı parlar
+        };
+      }
+
+      // ---------- YAZ: çekilen su, atlama taşları, başak tarlası, iskeledeki sandal geçidi ----------
+      const stepGrp = new T.Group(); geo.add(stepGrp);
+      { const S = sets.yaz, g = S.g;
+        S.flyers = [...S.flyers, 'robin', 'robin', 'robin'];   // üst dallarda ötücü kuşlar
+        for (let k = 0; k < 6; k++) { const u = k / 5, x = pond.x - pond.rx * 0.62 + u * pond.rx * 1.24, z = pond.z + Math.sin(u * 3.1) * 0.16 - 0.05;
+          const st = rockMesh(r, V(0.2 + r() * 0.06, 0.07, 0.17 + r() * 0.05), '#9a9488', 40 + k * 3.3, snowU); st.position.set(x, pond.y - 0.02, z); stepGrp.add(st); }
+        // başak tarlası (sağ çayır): tek çizimde saplar, tek çizimde başaklar; rüzgârda dalgalanır
+        const NW = 650, wheatU = { uT: { value: 0 }, uGust: { value: 0 }, uGrow: { value: 0.001 } };
+        const sway = (m) => { m.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, wheatU);
+          sh.vertexShader = 'uniform float uT; uniform float uGust; uniform float uGrow;\n' + sh.vertexShader.replace('#include <project_vertex>', `vec4 mvPosition = vec4( transformed, 1.0 );
+              #ifdef USE_INSTANCING
+                mvPosition = instanceMatrix * mvPosition; float hy = max(0.0, mvPosition.y - instanceMatrix[3].y); float ph = instanceMatrix[3].x * 0.9 + instanceMatrix[3].z * 0.6;
+                mvPosition.x += (sin(uT * 1.6 + ph) * 0.07 + uGust * 0.16) * hy * hy * 1.4; mvPosition.z += cos(uT * 1.15 + ph) * 0.035 * hy * hy;
+              #endif
+              mvPosition = modelViewMatrix * mvPosition; gl_Position = projectionMatrix * mvPosition;`); }; return m; };
+        const stalks = new T.InstancedMesh(new T.CylinderGeometry(0.004, 0.007, 1, 3).translate(0, 0.5, 0), sway(new T.MeshStandardMaterial({ color: '#ffffff', roughness: 0.8 })), NW);
+        const ears = new T.InstancedMesh(new T.CapsuleGeometry(0.016, 0.075, 2, 5), sway(new T.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7 })), NW);
+        { const M = new T.Matrix4(), Q2 = new T.Quaternion(), Sc = V(1, 1, 1), Pp = V(0, 0, 0), C = new T.Color();
+          for (let i = 0; i < NW; i++) { const x = 5.1 + r() * 4.3, z = -4.7 + r() * 3.2, h = 0.55 + r() * 0.4, y = ground(x, z) - 0.02;
+            Q2.setFromAxisAngle(V(r() - 0.5, 0, r() - 0.5).normalize(), r() * 0.12); M.compose(Pp.set(x, y, z), Q2, Sc.set(1, h, 1)); stalks.setMatrixAt(i, M);
+            M.compose(Pp.set(x, y + h + 0.03, z), Q2, Sc.set(1, 1, 1)); ears.setMatrixAt(i, M);
+            stalks.setColorAt(i, C.set('#c9a24a').offsetHSL(0, 0, (r() - 0.5) * 0.08)); ears.setColorAt(i, C.set('#e4bc52').offsetHSL((r() - 0.5) * 0.02, 0, (r() - 0.5) * 0.1)); } }
+        stalks.frustumCulled = ears.frustumCulled = false; g.add(stalks, ears);
+        // iskele ve ona yanaşmış sandal (geçit)
+        const plank = new T.MeshStandardMaterial({ color: '#8a6440', roughness: 0.85 }), post = new T.MeshStandardMaterial({ color: '#5e4128', roughness: 0.9 });
+        // göletin ön kıyısından suya uzanan iskele (kameradan görünür tarafta)
+        const pierY = pond.y + 0.12, px = pond.x - 0.75, pz0 = pond.z + pond.rz + 0.55;
+        for (let k = 0; k < 7; k++) { const pl = new T.Mesh(new T.BoxGeometry(0.36, 0.03, 0.17), plank); pl.position.set(px, pierY, pz0 - k * 0.18); pl.rotation.y = (r() - 0.5) * 0.05; g.add(pl); }
+        for (const [dx, dz] of [[-0.17, 0], [0.17, 0], [-0.17, -1.0], [0.17, -1.0]]) { const po = new T.Mesh(new T.CylinderGeometry(0.03, 0.035, 0.42, 8), post); po.position.set(px + dx, pierY - 0.12, pz0 - 0.1 + dz); g.add(po); }
+        const boat2 = new T.Group(); g.add(boat2);
+        { const hg = new T.BoxGeometry(0.95, 0.17, 0.38, 12, 2, 4), pp = hg.attributes.position;
+          for (let i = 0; i < pp.count; i++) { const x = pp.getX(i), y = pp.getY(i), e = Math.pow(Math.abs(x) / 0.475, 2.6); pp.setZ(i, pp.getZ(i) * (1 - e * 0.85) * (y < 0 ? 0.72 : 1)); pp.setY(i, y + (y > 0 ? e * 0.05 : 0)); }
+          hg.computeVertexNormals();
+          boat2.add(new T.Mesh(hg, new T.MeshStandardMaterial({ color: '#7a4a2a', roughness: 0.7 })));
+          const inner = new T.Mesh(new T.PlaneGeometry(0.72, 0.26).rotateX(-Math.PI / 2), new T.MeshStandardMaterial({ color: '#3e2716', roughness: 1 })); inner.position.y = 0.088; boat2.add(inner);
+          for (const x of [-0.18, 0.16]) { const seat = new T.Mesh(new T.BoxGeometry(0.06, 0.02, 0.3), plank); seat.position.set(x, 0.1, 0); boat2.add(seat); }
+          const trim = new T.Mesh(new T.BoxGeometry(0.8, 0.02, 0.02), new T.MeshStandardMaterial({ color: '#e8dcc0' })); trim.position.set(0, 0.07, 0.17); boat2.add(trim);
+          for (const sd of [-1, 1]) { const oar = new T.Mesh(new T.CylinderGeometry(0.008, 0.008, 0.7, 5), plank); oar.rotation.z = Math.PI / 2 - 0.25; oar.rotation.y = sd * 0.35; oar.position.set(0.02, 0.12, sd * 0.12); boat2.add(oar); } }
+        boat2.position.set(px + 0.42, pond.y + 0.05, pz0 - 0.95); boat2.rotation.y = Math.PI / 2 + 0.12; boat2.scale.setScalar(1.15); const boatYaw = boat2.rotation.y;
+        const rope = new T.Mesh(new T.CylinderGeometry(0.005, 0.005, 0.3, 4), new T.MeshStandardMaterial({ color: '#cdb48a' })); rope.rotation.z = Math.PI / 2 - 0.3; rope.position.set(px + 0.25, pierY - 0.04, pz0 - 0.7); g.add(rope);
+        const bGlow = glowSp('#fff2c8', 0, 1.5); bGlow.position.copy(boat2.position).add(V(0, 0.12, 0)); g.add(bGlow);
+        addPortal('yaz', boat2.position.clone().add(V(0, 0.1, 0)), 0.55);
+        // atlama taşında dinlenen kaplumbağa
+        const turtle = new T.Group(); g.add(turtle);
+        { const shellTex = canvasTex(128, 128, (x) => { x.fillStyle = '#5a6a30'; x.fillRect(0, 0, 128, 128); x.strokeStyle = '#2e3a18'; x.lineWidth = 3; for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { x.beginPath(); for (let a = 0; a < 6; a++) x.lineTo(16 + i * 32 + Math.cos(a * 1.047) * 14, 16 + j * 32 + (i % 2) * 16 + Math.sin(a * 1.047) * 14); x.closePath(); x.stroke(); } });
+          const shell = new T.Mesh(new T.SphereGeometry(0.11, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), new T.MeshStandardMaterial({ map: shellTex, roughness: 0.6 })); shell.scale.set(1.25, 0.6, 1); turtle.add(shell);
+          const skin = new T.MeshStandardMaterial({ color: '#8a9a5a', roughness: 0.7 });
+          const head = new T.Mesh(new T.SphereGeometry(0.035, 10, 8), skin); head.position.set(0.15, 0.015, 0); turtle.add(head); turtle.userData.head = head;
+          for (const [x, z] of [[0.08, 0.09], [0.08, -0.09], [-0.08, 0.09], [-0.08, -0.09]]) { const lg = new T.Mesh(new T.SphereGeometry(0.03, 8, 6), skin); lg.scale.set(1.3, 0.4, 0.8); lg.position.set(x, 0.0, z); turtle.add(lg); }
+          turtle.scale.setScalar(1.3); }
+        { const st = stepGrp.children[2]; turtle.position.set(st.position.x, pond.y + 0.06, st.position.z); turtle.rotation.y = 2.4; }
+        // gölette güneş parıltıları
+        const glints = Array.from({ length: 9 }, () => { const sp = glowSp('#fffbe8', 0, 0.16); const a = r() * 6.283, d = r() * 0.75; sp.position.set(pond.x + Math.cos(a) * d * pond.rx * 0.75, pond.y + 0.02, pond.z + Math.sin(a) * d * pond.rz * 0.75); g.add(sp); return { sp, ph: r() * 6, sp2: 1.5 + r() * 2 }; });
+        // kök gölgelerinde ateş böcekleri
+        const NFf = 34, ff = Array.from({ length: NFf }, () => ({ p: V(-3.2 + r() * 6.4, 0.12 + r() * 0.6, 0.5 + r() * 2.6), ph: r() * 6, sp: 0.6 + r() * 0.9 }));
+        const ffPts = ptsOf(ff.map((o) => o.p), new T.PointsMaterial({ map: glowTex, size: 0.09, transparent: true, depthWrite: false, vertexColors: true, blending: T.AdditiveBlending }));
+        ffPts.geometry.setAttribute('color', new T.BufferAttribute(new Float32Array(NFf * 3), 3)); g.add(ffPts);
+        XS.yaz = (dt, t, k, gust) => {
+          wheatU.uT.value = t; wheatU.uGust.value = gust; 
+          const hk = PORTAL.yaz.hk; boat2.rotation.x = Math.sin(t * 1.1) * 0.05 + hk * Math.sin(t * 4) * 0.03; boat2.rotation.z = Math.sin(t * 0.8 + 1) * 0.03; boat2.rotation.y = boatYaw + Math.sin(t * 0.4) * 0.04; boat2.position.y = pond.y + 0.05 + Math.sin(t * 1.3) * 0.012;
+          bGlow.material.opacity = (0.12 + hk * 0.6) * k;
+          const hd = turtle.userData.head, out = Math.sin(t * 0.35) > -0.2 ? 1 : 0.4; hd.position.x = lerp(hd.position.x, 0.1 + out * 0.06, 1 - Math.exp(-dt * 2)); hd.position.y = 0.015 + Math.sin(t * 1.1) * 0.006;
+          glints.forEach((o) => { o.sp.material.opacity = Math.max(0, Math.sin(t * o.sp2 + o.ph)) ** 6 * 0.9 * k; });
+          const P = ffPts.geometry.attributes.position, Cc = ffPts.geometry.attributes.color;
+          ff.forEach((o, i) => { const q = t * 0.4 * o.sp + o.ph; P.setXYZ(i, o.p.x + Math.sin(q) * 0.25, o.p.y + Math.sin(q * 1.7) * 0.08, o.p.z + Math.cos(q * 0.8) * 0.2); const b = Math.max(0, Math.sin(t * o.sp * 2.2 + o.ph)) ** 3 * k; Cc.setXYZ(i, 0.85 * b, 1.0 * b, 0.35 * b); });
+          P.needsUpdate = Cc.needsUpdate = true;
+        };
+      }
+
+      // ---------- SONBAHAR: açık mağarada ateş (geçit), mantarlar, yaprak yığınları, gölette yapraklar, kirpi ailesi ----------
+      { const S = sets.sonbahar, g = S.g;
+        const logM = new T.MeshStandardMaterial({ color: '#5a3a22', roughness: 0.9 });
+        const firePos = caveAt(0, 0.04, 0.55); firePos.y = ground(firePos.x, firePos.z);
+        for (const a of [0.5, -0.6, 1.9]) { const lg = new T.Mesh(new T.CylinderGeometry(0.035, 0.04, 0.42, 7), logM); lg.rotation.z = Math.PI / 2 - 0.25; lg.rotation.y = a; lg.position.copy(firePos).add(V(0, 0.05, 0)); g.add(lg); }
+        for (let k = 0; k < 7; k++) { const a = (k / 7) * 6.283, st = rockMesh(r, V(0.08, 0.06, 0.08), '#6e6a62', 60 + k, snowU); st.position.copy(firePos).add(V(Math.cos(a) * 0.27, 0, Math.sin(a) * 0.27)); g.add(st); }
+        const flames = [['#ffcf6a', 0.55], ['#ff9a3a', 0.75], ['#ff6a2a', 0.5]].map(([c, s2], k) => { const sp = glowSp(c, 0.8, s2); sp.position.copy(firePos).add(V((k - 1) * 0.05, 0.2 + k * 0.03, 0)); g.add(sp); return { sp, s2, ph: k * 2 }; });
+        const NE = 24, emb = Array.from({ length: NE }, () => ({ p: V(0, -50, 0), v: 0, life: 0 }));
+        const embPts = ptsOf(emb.map((e) => e.p), new T.PointsMaterial({ map: glowTex, color: '#ffb04a', size: 0.05, transparent: true, depthWrite: false, blending: T.AdditiveBlending })); g.add(embPts);
+        addPortal('sonbahar', caveAt(0, 0.6, 0.05), 0.75);
+        // kök gölgelerinde küçük orman mantarları (iki çizim: saplar ve şapkalar)
+        const NM = 18, stems = new T.InstancedMesh(new T.CylinderGeometry(0.012, 0.016, 1, 6).translate(0, 0.5, 0), new T.MeshStandardMaterial({ color: '#efe4cc', roughness: 0.8 }), NM);
+        const caps = new T.InstancedMesh(new T.SphereGeometry(0.05, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), new T.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6 }), NM);
+        { const M = new T.Matrix4(), Qm = new T.Quaternion(), C = new T.Color();
+          for (let i = 0; i < NM; i++) { const a = -0.3 + r() * 3.7, d = 1.0 + r() * 1.3, x = Math.cos(a) * d - 0.3, z = Math.sin(a) * d * 0.9 + 0.6, y = ground(x, z) - 0.005, h = 0.05 + r() * 0.07, sc = 0.7 + r() * 0.6;
+            Qm.setFromAxisAngle(V(r() - 0.5, 0, r() - 0.5).normalize(), r() * 0.25);
+            M.compose(V(x, y, z), Qm, V(sc, h, sc)); stems.setMatrixAt(i, M); M.compose(V(x, y + h, z), Qm, V(sc, sc * (0.7 + r() * 0.4), sc)); caps.setMatrixAt(i, M);
+            caps.setColorAt(i, C.set(i % 3 === 0 ? '#b8402a' : i % 3 === 1 ? '#8a5a32' : '#c08a4a')); } }
+        g.add(stems, caps);
+        // kıyıda ve köklerde kuru yaprak yığınları
+        const piles = new T.InstancedMesh(new T.SphereGeometry(0.18, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), new T.MeshStandardMaterial({ color: '#ffffff', roughness: 1 }), 9);
+        { const M = new T.Matrix4(), C = new T.Color(); [[pond.x - pond.rx - 0.25, pond.z + 0.3], [pond.x + 0.4, pond.z + pond.rz + 0.3], [pond.x + pond.rx + 0.2, pond.z - 0.4], [-2.4, 1.6], [1.7, 1.2], [-3.6, 2.6], [-1.2, 2.8], [2.6, 2.4], [-5.2, 0.6]].forEach(([x, z], i) => {
+          M.compose(V(x, ground(x, z) - 0.02, z), new T.Quaternion(), V(1 + r() * 0.8, 0.35 + r() * 0.2, 0.8 + r() * 0.6)); piles.setMatrixAt(i, M); piles.setColorAt(i, C.set(['#b4502e', '#d98a3a', '#8a4a26', '#c06a2a'][i % 4])); }); }
+        g.add(piles);
+        // gölette süzülen yapraklar
+        const leafG = (() => { const sh = new T.Shape(); sh.moveTo(0, -0.07); sh.quadraticCurveTo(0.06, -0.02, 0, 0.08); sh.quadraticCurveTo(-0.06, -0.02, 0, -0.07); return new T.ShapeGeometry(sh, 5).rotateX(-Math.PI / 2); })();
+        const pLeaves = ['#c9542f', '#e8a43a', '#a7482a', '#d9822e'].map((c, i) => { const m = new T.Mesh(leafG, new T.MeshStandardMaterial({ color: c, roughness: 0.7, side: T.DoubleSide })); m.scale.setScalar(1.3); g.add(m); return { m, a: i * 1.6, d: 0.3 + i * 0.13, sp: 0.05 + r() * 0.05 }; });
+        // mağara ağzındaki sıcak taşların yanında kıvrılmış kirpi ailesi
+        const spikeTex = canvasTex(128, 64, (x) => { x.fillStyle = '#6a4a30'; x.fillRect(0, 0, 128, 64); for (let i = 0; i < 380; i++) { x.strokeStyle = r() < 0.5 ? '#2e1e12' : '#b89a78'; x.lineWidth = 1.3; const px = r() * 128, py = r() * 64; x.beginPath(); x.moveTo(px, py); x.lineTo(px + 3, py - 6); x.stroke(); } });
+        const hogs = [[0.85, 0.75, 1], [1.12, 0.62, 0.62], [0.68, 0.98, 0.58]].map(([lx, lz, sc], k) => { const h = new T.Group();
+          const body = new T.Mesh(new T.SphereGeometry(0.12, 16, 10), new T.MeshStandardMaterial({ map: spikeTex, roughness: 0.95 })); body.scale.set(1.15, 0.72, 0.95); body.position.y = 0.075; h.add(body);
+          const face = new T.Mesh(new T.ConeGeometry(0.045, 0.1, 10).rotateZ(-Math.PI / 2), new T.MeshStandardMaterial({ color: '#e8d6b8', roughness: 0.8 })); face.position.set(0.12, 0.05, 0); h.add(face);
+          const nose = new T.Mesh(new T.SphereGeometry(0.012, 6, 4), new T.MeshBasicMaterial({ color: '#1a1410' })); nose.position.set(0.17, 0.05, 0); h.add(nose);
+          const hp = caveAt(lx, 0, lz); h.position.set(hp.x, ground(hp.x, hp.z) - 0.01, hp.z); h.rotation.y = 0.6 + k * 1.3; h.scale.setScalar(sc * 1.25); g.add(h); return { h, body, ph: k * 1.7 }; });
+        XS.sonbahar = (dt, t, k) => {
+          const hk = PORTAL.sonbahar.hk;
+          flames.forEach((f) => { const fl = 0.85 + Math.sin(t * 9 + f.ph) * 0.12 + Math.sin(t * 17 + f.ph * 2) * 0.08; f.sp.scale.set(f.s2 * fl * (1 + hk * 0.4), f.s2 * fl * 1.5 * (1 + hk * 0.4), 1); f.sp.material.opacity = 0.75 * k; });
+          const P = embPts.geometry.attributes.position;
+          emb.forEach((e, i) => { e.life -= dt; if (e.life <= 0 && chance(0.12 + hk * 0.3, dt)) { e.life = 1 + r() * 1.2; e.p.copy(firePos).add(V((r() - 0.5) * 0.15, 0.15, (r() - 0.5) * 0.15)); e.v = 0.4 + r() * 0.4; }
+            if (e.life > 0) { e.p.y += e.v * dt; e.p.x += Math.sin(t * 3 + i) * 0.1 * dt; } P.setXYZ(i, e.p.x, e.life > 0 ? e.p.y : -50, e.p.z); }); P.needsUpdate = true;
+          pLeaves.forEach((L) => { L.a += L.sp * dt; L.m.position.set(pond.x + Math.cos(L.a) * L.d * pond.rx, pond.y + 0.012 + Math.sin(t * 1.3 + L.a) * 0.004, pond.z + Math.sin(L.a) * L.d * pond.rz); L.m.rotation.y = L.a * 1.7; });
+          hogs.forEach((o) => { const b2 = 1 + Math.sin(t * 1.4 + o.ph) * 0.03; o.body.scale.set(1.15 * b2, 0.72 * b2, 0.95); });
+        };
+      }
+
+      // ---------- KIŞ: karla örtülü mağara, dolunaylı buz aynası (geçit), kutup tilkisi ve izleri, geyik silüeti, kristal ışıltılar, yıldızlar ----------
+      { const S = sets.kis, g = S.g;
+        const snowM = new T.MeshStandardMaterial({ color: '#f2f6fb', roughness: 0.9 });
+        const drift = new T.Mesh(new T.SphereGeometry(1, 20, 12), snowM); drift.scale.set(1.0, 0.62, 0.5); drift.position.copy(caveAt(0, 0.1, 0.12)); drift.rotation.y = 0.25; g.add(drift);
+        const cap = new T.Mesh(new T.SphereGeometry(1, 16, 8), snowM); cap.scale.set(1.1, 0.16, 0.45); cap.position.copy(caveAt(0.05, 1.95, -0.1)); cap.rotation.y = 0.25; g.add(cap);
+        // buz aynası: dolunayın yansıdığı kristal daire
+        const mirTex = canvasTex(256, 256, (x) => { const gr = x.createRadialGradient(128, 128, 10, 128, 128, 128); gr.addColorStop(0, '#f4f8ff'); gr.addColorStop(0.55, '#9fbbe0'); gr.addColorStop(0.9, '#5a7aa8'); gr.addColorStop(1, 'rgba(90,122,168,0)'); x.fillStyle = gr; x.fillRect(0, 0, 256, 256);
+          x.fillStyle = '#ffffff'; x.shadowColor = '#e6f0ff'; x.shadowBlur = 24; x.beginPath(); x.arc(150, 104, 30, 0, 6.283); x.fill(); x.shadowBlur = 0;
+          x.strokeStyle = 'rgba(255,255,255,.55)'; x.lineWidth = 1.2; for (let i = 0; i < 14; i++) { const a = r() * 6.283, l = 30 + r() * 70; x.beginPath(); x.moveTo(128, 128); x.lineTo(128 + Math.cos(a) * l, 128 + Math.sin(a) * l); x.stroke(); } });
+        const mirror = new T.Mesh(new T.CircleGeometry(0.5, 48).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ map: mirTex, transparent: true, toneMapped: false, depthWrite: false })); mirror.scale.set(1.25, 1, 0.85); mirror.position.set(pond.x, pond.y + 0.014, pond.z); g.add(mirror);
+        const mGlow = glowSp('#cfe0ff', 0.35, 1.4); mGlow.position.set(pond.x, pond.y + 0.15, pond.z); g.add(mGlow);
+        addPortal('kis', V(pond.x, pond.y + 0.1, pond.z), 0.6);
+        const mSpark = Array.from({ length: 7 }, () => { const sp = glowSp('#ffffff', 0, 0.12); const a = r() * 6.283, d = r() * 0.45; sp.position.set(pond.x + Math.cos(a) * d, pond.y + 0.03, pond.z + Math.sin(a) * d * 0.7); g.add(sp); return { sp, ph: r() * 6, s2: 1 + r() * 2 }; });
+        // buz sarkıtlarında kristal ışıltılar
+        const icSpark = frozen.children.filter((o) => o.geometry && o.geometry.type === 'ConeGeometry').map((ic, i) => { const sp = glowSp('#e8f4ff', 0, 0.14); sp.position.copy(ic.position).add(V(0, -ic.geometry.parameters.height / 2, 0.02)); g.add(sp); return { sp, ph: i * 1.3 }; });
+        // kutup tilkisi: donmuş göletin kıyısında yürür, karda iz bırakır
+        const fox = F.quad('fox', { coat: { back: '#eef1f4', belly: '#ffffff' } }); fox.root.scale.setScalar(1.05); g.add(fox.root);
+        const NFp = 70, prints = new T.InstancedMesh(new T.CircleGeometry(0.022, 8).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ color: '#9aabc4', transparent: true, opacity: 0.75, depthWrite: false }), NFp);
+        prints.frustumCulled = false; g.add(prints);
+        const PR = Array.from({ length: NFp }, () => ({ age: 99, x: 0, z: 0 })); let prI = 0, prDist = 0, side = 1;
+        const foxS = { u: 0, prev: V(0, 0, 0), stop: 0 };
+        const foxPath = (u) => V(pond.x + Math.cos(u) * (pond.rx + 0.5), 0, pond.z + Math.sin(u) * (pond.rz + 0.45) * 0.9);
+        // uzak karlı tepede silüet halinde duran geyik
+        const stag = F.quad('stag'); stag.root.scale.setScalar(1.35); { const sx = 8.2, sz = -13.2; stag.root.position.set(sx, ground(sx, sz), sz); } stag.root.rotation.y = Math.PI; g.add(stag.root);
+        stag.root.traverse((o) => { if (o.material && o.material.color) { o.material = o.material.clone(); o.material.color = new T.Color('#3a4662'); } });
+        // dallardan dökülen kar tozları
+        const NSd = 90, sdust = Array.from({ length: NSd }, () => ({ p: V(0, -50, 0), v: V(0, 0, 0), life: 0 }));
+        const sdPts = ptsOf(sdust.map((d) => d.p), new T.PointsMaterial({ map: glowTex, color: '#f4f8ff', size: 0.06, transparent: true, depthWrite: false, opacity: 0.85 })); g.add(sdPts);
+        let sdI = 0, sdT = 2;
+        // yıldızlar: yumuşakça yanıp söner
+        const NSt = 220, stars = Array.from({ length: NSt }, () => ({ p: V((r() - 0.5) * 140, 9 + r() * 26, -60 - r() * 10), ph: r() * 6, sp: 0.6 + r() * 1.8, b: 0.4 + r() * 0.6 }));
+        const stPts = ptsOf(stars.map((o) => o.p), new T.PointsMaterial({ map: glowTex, size: 0.55, transparent: true, depthWrite: false, vertexColors: true, fog: false, blending: T.AdditiveBlending }));
+        stPts.geometry.setAttribute('color', new T.BufferAttribute(new Float32Array(NSt * 3), 3)); stPts.renderOrder = -10; g.add(stPts);
+        XS.kis = (dt, t, k) => {
+          const hk = PORTAL.kis.hk;
+          mirror.material.opacity = (0.85 + hk * 0.15) * k; mGlow.material.opacity = (0.3 + Math.sin(t * 0.9) * 0.05 + hk * 0.55) * k; mGlow.scale.setScalar(1.3 + hk * 0.5);
+          mSpark.forEach((o) => { o.sp.material.opacity = Math.max(0, Math.sin(t * o.s2 + o.ph)) ** 8 * (0.9 + hk) * k; });
+          icSpark.forEach((o) => { o.sp.material.opacity = Math.max(0, Math.sin(t * 1.3 + o.ph)) ** 10 * 0.95 * k; });
+          // tilki: yürür, ara sıra durup kulak kabartır; her adımda karda bir iz
+          let speed = 0;
+          if (foxS.stop > 0) foxS.stop -= dt; else { foxS.u -= dt * 0.11; speed = 0.42; if (chance(0.0025, dt)) foxS.stop = 2 + r() * 3; }
+          const p = foxPath(foxS.u), p2 = foxPath(foxS.u - 0.02); p.y = ground(p.x, p.z);
+          fox.root.position.copy(p); fox.root.rotation.y = Math.atan2(-(p2.z - p.z), p2.x - p.x); fox.animate(dt, t, speed, { alert: foxS.stop > 0 });
+          prDist += foxS.prev.distanceTo(p); foxS.prev.copy(p);
+          if (prDist > 0.16 && prDist < 2) { side = -side; const yaw = fox.root.rotation.y, o = PR[prI++ % NFp]; o.age = 0; o.x = p.x - Math.sin(yaw) * 0.045 * side; o.z = p.z - Math.cos(yaw) * 0.045 * side; }
+          if (prDist > 0.16) prDist = 0;
+          PR.forEach((o, i) => { o.age += dt; const sc = o.age < 14 ? Math.max(0.0001, 1 - smooth(o.age / 14)) : 0.0001; tmpM.compose(tmpV.set(o.x, ground(o.x, o.z) + 0.012, o.z), tmpQ, tmpS.set(sc, 1, sc * 1.3)); prints.setMatrixAt(i, tmpM); });
+          prints.instanceMatrix.needsUpdate = true; prints.material.opacity = 0.75 * k;
+          stag.animate(dt, t, 0, { alert: Math.sin(t * 0.2) > 0.4 });
+          // kar tozu: arada bir dalın bir yerinden süzülür
+          sdT -= dt; if (sdT < 0 && limbs) { sdT = 2.2 + r() * 3.5; const L = limbs[Math.floor(r() * limbs.length)], at = L.path(0.3 + r() * 0.6); for (let n = 0; n < 22; n++) { const d = sdust[sdI++ % NSd]; d.p.copy(at).add(V((r() - 0.5) * 0.3, 0, 0.1 + (r() - 0.5) * 0.2)); d.v.set((r() - 0.5) * 0.15, -0.15 - r() * 0.25, (r() - 0.5) * 0.1); d.life = 2 + r() * 1.5; } }
+          const SP = sdPts.geometry.attributes.position; sdust.forEach((d, i) => { if (d.life > 0) { d.life -= dt; d.p.addScaledVector(d.v, dt); d.v.y -= 0.05 * dt; } SP.setXYZ(i, d.p.x, d.life > 0 ? d.p.y : -50, d.p.z); }); SP.needsUpdate = true;
+          const SC = stPts.geometry.attributes.color; stars.forEach((o, i) => { const b = o.b * (0.55 + 0.45 * Math.sin(t * o.sp + o.ph)) * k; SC.setXYZ(i, b, b, b * 1.05); }); SC.needsUpdate = true;
+        };
+      }
+      function updateExtras(dt, t, gust) {
+        for (const s in XS) { const k = setK[s] || 0; if (k > 0.003) XS[s](dt, t, k, gust); }
+        for (const s in PORTAL) { const P = PORTAL[s]; P.hk = lerp(P.hk, hoverPortal === s && season === s ? 1 : 0, 1 - Math.exp(-dt * 6)); }
+      }
       for (const k in sets) fadeGroup(sets[k].g, 0);
       const bolt = new T.Sprite(new T.SpriteMaterial({ map: glowTex, color: '#e4ebff', transparent: true, depthWrite: false, fog: false, blending: T.AdditiveBlending, opacity: 0 }));
       bolt.scale.set(34, 20, 1); bolt.position.set(0, 12, -46); bolt.renderOrder = -8.5; scene.add(bolt);
       let boltT = 4, flicker = 0;
       // sabit coğrafyanın mevsimsel görünürlüğü (opaklık + yerden yükselme ile yumuşak geçiş)
-      const GEO = { rocks: { ilkbahar: 1, sonbahar: 1, kis: 1 }, cave: { sonbahar: 1 }, stream: { ilkbahar: 1, sonbahar: 1, kis: 1 }, frz: { kis: 1 }, bloom: { yaz: 1 } };
+      const GEO = { rocks: { ilkbahar: 1, sonbahar: 1, kis: 1 }, cave: { ilkbahar: 1, sonbahar: 1, kis: 1 }, fire: { sonbahar: 1 }, stream: { ilkbahar: 1, sonbahar: 1, kis: 1 }, frz: { kis: 1 }, bloom: { yaz: 1 }, steps: { yaz: 1 },
+        lvl: { ilkbahar: 1.05, yaz: 0.8, sonbahar: 0.96, kis: 1 } };   // lvl: gölet su seviyesi (yazın çekilir, atlama taşları çıkar)
       const SKY = { ilkbahar: '#e2f0f2', yaz: '#d3eef6', sonbahar: '#9c958a', kis: '#3a506b' };
       function geoFade(g, k, sink) {
         g.visible = k > 0.003; g.position.y = -(1 - smooth(k)) * sink;
@@ -427,7 +682,7 @@
       let season = '', active = [], leaving = [], swims = [], flyers = [], flies = [], owls = [], climbers = [], drags = [], spawnT = -1;
       const perchPt = () => { const L = limbs[Math.floor(r() * 5)], u = 0.4 + r() * 0.5; return L.path(u).add(V(0, 0.07, 0.12)); };
       const setK = {};
-      const G = { fall: 1, ice: 0, lily: 1, bloom: 0, rocks: 1, cave: 0, stream: 1, frz: 0, tint: new T.Color('#ffffff') }, GT = { fall: 1, ice: 0, lily: 1, bloom: 0, rocks: 1, cave: 0, stream: 1, frz: 0, tint: new T.Color('#ffffff') };
+      const G = { fall: 1, ice: 0, lily: 1, bloom: 0, rocks: 1, cave: 0, fire: 0, stream: 1, frz: 0, steps: 0, lvl: 1, tint: new T.Color('#ffffff') }, GT = { fall: 1, ice: 0, lily: 1, bloom: 0, rocks: 1, cave: 0, fire: 0, stream: 1, frz: 0, steps: 0, lvl: 1, tint: new T.Color('#ffffff') };
       const fauna = () => (window.ErmeQuality ? window.ErmeQuality.p.fauna : 1);   // kalite ön ayarına göre hayvan yoğunluğu
       function spawnSeason(s) {
         const S = sets[s], k = fauna();
@@ -494,7 +749,8 @@
         const k = 1 - Math.exp(-dt * 0.8);
         G.fall = lerp(G.fall, GT.fall, k); G.ice = lerp(G.ice, GT.ice, k); G.lily = lerp(G.lily, GT.lily, k); G.tint.lerp(GT.tint, k);
         for (const key in GEO) G[key] = lerp(G[key], GT[key], k * 1.2);
-        geoFade(rockGrp, G.rocks, 2.2); geoFade(caveGrp, G.cave, 1.6); sMat.uniforms.uOp.value = G.stream;
+        geoFade(rockGrp, G.rocks, 2.2); geoFade(caveGrp, G.cave, 1.6); geoFade(stepGrp, G.steps, 0.3); sMat.uniforms.uOp.value = G.stream;
+        mouth.material.color.copy(mouthDark).lerp(WHITE, clamp(G.fire)); pondMesh.scale.set(pond.rx * G.lvl, 1, pond.rz * G.lvl);
         streamGrp.visible = G.stream > 0.01; caveLight.intensity = 0;
         fallMat.uniforms.uTime.value = t; fallMat.uniforms.uOp.value = clamp(G.fall); fall.scale.x = 0.8 + G.fall * 0.25;
         foam.forEach((f) => { f.sp.material.opacity = 0.5 * clamp(G.fall); f.sp.scale.setScalar((0.6 + Math.sin(t * 3 + f.ph) * 0.12) * (0.7 + G.fall * 0.4)); });
@@ -504,10 +760,13 @@
         lilies.visible = G.lily > 0.05; lilies.children.forEach((c) => c.scale.setScalar(Math.max(0.001, G.lily)));
         blooms.visible = G.bloom > 0.02; blooms.children.forEach((c, i) => { c.scale.setScalar(Math.max(0.001, smooth(G.bloom * 1.4 - i * 0.08)) * (1.25 + Math.sin(t * 0.8 + i) * 0.03)); });
         boat.position.x += dt * 0.35; if (boat.position.x > 28) boat.position.x = -28; boat.rotation.z = Math.sin(t * 0.9) * 0.04; boat.position.y = 1.15 + Math.sin(t * 1.2) * 0.03;
-        caveGlow.material.opacity = (0.5 + Math.sin(t * 2.3) * 0.05 + Math.sin(t * 7.1) * 0.03) * G.cave; caveLight.intensity = (2.4 + Math.sin(t * 5.3) * 0.25) * G.cave;
+        const ph = PORTAL.sonbahar ? PORTAL.sonbahar.hk : 0;   // geçidin üstüne gelince ateş harlanır
+        caveGlow.material.opacity = (0.5 + Math.sin(t * 2.3) * 0.05 + Math.sin(t * 7.1) * 0.03 + ph * 0.35) * G.cave * G.fire; caveLight.intensity = (2.4 + Math.sin(t * 5.3) * 0.25 + Math.sin(t * 13.7) * 0.15 + ph * 1.5) * G.cave * G.fire;
+        updateExtras(dt, t, gust);
         for (const rd of reedList) { const w = Math.sin(t * 1.15 - rd.x * 0.2 + rd.ph * 0.25); rd.g.rotation.z = rd.base * 0.5 + w * 0.045 - gust * 0.13; rd.g.rotation.x = Math.sin(t * 0.9 - rd.x * 0.2 + rd.ph) * 0.025; }
         for (const f of fg) { f.sp.material.rotation = Math.sin(t * 0.9 - f.sp.position.x * 0.18 + f.ph * 0.3) * f.sway - gust * f.sway * 1.4; f.sp.material.color.copy(G.tint).multiply(DIM.value); }
-        for (const key in sets) { setK[key] = lerp(setK[key] ?? 0, key === season ? 1 : 0, 1 - Math.exp(-dt * 1.3)); fadeGroup(sets[key].g, setK[key]); }
+        for (const key in sets) { const goal = key === season ? 1 : 0; let k2 = lerp(setK[key] ?? 0, goal, 1 - Math.exp(-dt * 1.3)); if (Math.abs(k2 - goal) < 0.004) k2 = goal;
+          if (k2 !== setK[key] || sets[key].g.userData.fk === undefined) { setK[key] = k2; fadeGroup(sets[key].g, k2); sets[key].g.userData.fk = k2; } }
         sets.sonbahar.mists.forEach((m) => { m.sp.position.x += m.v * dt; if (m.sp.position.x > 24) m.sp.position.x = -24; });
         if (spawnT > 0) { spawnT -= dt; if (spawnT <= 0) spawnSeason(season); }
         // hava
@@ -628,7 +887,16 @@
       }
       // kalite değişince mevsimin hayvanlarını yeni yoğunlukla yeniden yerleştir
       function refresh() { const s = season; if (!s) return; season = ''; setSeason(s); }
-      return { setSeason, refresh, update, env, den, pond };
+      // gizli geçitler: yalnız o mevsimde ve geçiş bitince tıklanabilir
+      const portalHits = () => (PORTAL[season] && (setK[season] || 0) > 0.9 ? [PORTAL[season].hit] : []);
+      const portalHover = (s) => { hoverPortal = s || null; };
+      function portalView(s) {   // kameranın yaklaşacağı nokta: geçide doğru, biraz yukarıdan
+        const P = PORTAL[s]; if (!P) return null; const home = V(0.2, 3.6, 15.2), d = home.clone().sub(P.pos).normalize();
+        const dist = s === 'kis' ? 3.0 : s === 'yaz' ? 2.6 : 2.4;
+        const pos = P.pos.clone().addScaledVector(d, dist); pos.y = Math.max(pos.y, P.pos.y + (s === 'kis' || s === 'yaz' ? 1.1 : 0.35));
+        return { pos: pos.toArray(), look: P.pos.toArray(), at: P.pos.clone() };
+      }
+      return { setSeason, refresh, update, env, den, pond, portalHits, portalHover, portalView, get season() { return season; } };
     },
   };
 })();

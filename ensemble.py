@@ -423,6 +423,7 @@ def run_second_pass(pdf_path: Path, store_path: Path, headers, page_ids, model: 
     doc = pymupdf.open(pdf_path)
     print(f"  {model} ile {len(todo)} sayfa okunacak"
           f"{f' ({len(page_ids) - len(todo)} sayfa önceden okunmuş)' if len(todo) < len(page_ids) else ''}.")
+    t_okuma = time.time()
     for n, p in enumerate(todo, 1):
         t0 = time.time()
         print(f"  >> Sayfa {int(p) + 1} okunuyor ({model})", flush=True)  # arayüz PDF önizlemesini takip eder
@@ -431,6 +432,11 @@ def run_second_pass(pdf_path: Path, store_path: Path, headers, page_ids, model: 
         store["pages"][p] = text
         store_path.write_text(json.dumps(store, ensure_ascii=False), encoding="utf-8")
         print(f"  [{model}] Sayfa {int(p) + 1} ({n}/{len(todo)}) tamamlandı ({time.time() - t0:.1f}sn)")
+    try:   # süre tahmini bu bilgisayarın gerçek hızını öğrensin
+        from sure_tahmini import sure_kaydet
+        sure_kaydet("ocr", model, len(todo), time.time() - t_okuma)
+    except Exception:
+        pass
     return store["pages"]
 
 
@@ -461,6 +467,9 @@ def main():
         print(f"HATA: {main_json} yok. Önce bu kitap için OCR'ı (ocr.py) çalıştır.")
         sys.exit(1)
     main_store = json.loads(main_json.read_text(encoding="utf-8"))
+    if main_store.get("model") == "metin-katmani":
+        print("Bu kitap PDF'in metin katmanından çıkarıldı (OCR yapılmadı): ikinci okumaya gerek yok.")
+        return
     q_pages = main_store["pages"]
     headers = main_store.get("headers", [])
     page_ids = sorted(q_pages, key=int)

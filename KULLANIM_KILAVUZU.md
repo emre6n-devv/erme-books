@@ -14,7 +14,23 @@ Bu kılavuz, uygulamayı ilk kez açan birinin kurulumdan ilk e-kitabına kadar 
 
 ## 1. İlk kurulum ve ortam hazırlığı
 
-### En kolay yol: tek tıkla kurulum (Windows)
+### En kolay yol: Kurulum dosyası (Windows)
+
+1. Projenin GitHub sayfasında sağdaki **Releases** bölümüne gir ve **`ERME-BOOKS-Kurulum-….exe`** dosyasını indir.
+2. Dosyaya çift tıkla. Windows mavi bir "bilinmeyen yayıncı" uyarısı gösterirse **Ek bilgi → Yine de çalıştır** de.
+3. Kurulum penceresinde **İleri → Kur → Son** de. Masaüstüne **ERME BOOKS** kısayolu gelir ve uygulama açılır.
+4. İlk açılışta **Kurulum Sihirbazı** çıkar:
+
+| Sihirbaz adımı | Ne yapmalısın |
+|---|---|
+| **Yapay zekâ motoru (Ollama)** | **Ollama'yı İndir ve Kur**'a bas. Ollama'nın kendi kurulum penceresi açılınca **Install** de. Ollama'nın açtığı pencerede bir şey seçmene gerek yok; kapatabilirsin. Sihirbaz kurulumun bittiğini kendisi anlar |
+| **Türkçe sözlük** | Kurulum dosyasıyla geldiği için zaten hazırdır |
+| **Yapay zekâ modelleri** | Bilgisayarına uygun set işaretli gelir. **Seçilenleri İndir**'e bas; her modelin ilerleme çubuğu görünür |
+| **Başla** | Her şey tamamlanınca etkinleşir |
+
+Sihirbazı daha sonra üst çubuktaki model göstergesine tıklayıp **Kurulum Sihirbazı** düğmesiyle yeniden açabilirsin. Kitapların, kapakların ve EPUB'ların **Belgeler\ERME BOOKS** klasöründe tutulur.
+
+### Kaynak koddan tek tıkla kurulum (Windows)
 
 1. GitHub sayfasında **Code → Download ZIP** ile projeyi indir ve ZIP'i bir klasöre çıkar (örn. `C:\erme-books`).
 2. Klasördeki **`kurulum.bat`** dosyasına çift tıkla. Açılan pencere adım adım şunları yapar:
@@ -56,10 +72,24 @@ Kurulum adımları:
 
 ## 2. Donanımına göre model seçimi ve uyarıların anlamı
 
+### Profil seçimi (her kitapta)
+
+OCR'ı başlattığında önce **profil ekranı** açılır. Her profilin bu kitapta bu bilgisayarda tahmini süresi yazar; bilgisayarına en uygun olan işaretlidir. PDF'in içinde sağlam bir metin katmanı varsa ekranda bu da yazar: o zaman OCR yapılmaz, metin birkaç saniyede PDF'ten alınır.
+
+| Profil | Ne kullanır | Kimin için |
+|---|---|---|
+| **Çok hızlı** | Yalnız Tesseract | Çok zayıf bilgisayar, hızlı deneme |
+| **Hafif** | Tesseract + `glm-ocr` (yalnız şüpheli satırlar) | Ekran kartı olmayan ya da az RAM'li bilgisayar (varsayılan) |
+| **Standart** | `qwen2.5vl:7b` + `glm-ocr` + `qwen2.5:7b-instruct` | Ekran kartlı, 16 GB+ RAM |
+| **Güçlü** | Standart + `gemma3:12b` + `qwen2.5:14b-instruct` | Güçlü ekran kartı, 32 GB RAM |
+
+Hafif profil test kitaplarında %0,03–1,4 kelime hatası verdi. Tesseract kurulum dosyasının içinde gelir; kaynak koddan kurduysan `kurulum.bat` onu da kurar.
+
 ### Hangi modelleri kurmalıyım?
 
 | Bilgisayarın | Kurulacak modeller | Beklenen hata payı |
 |---|---|---|
+| **Ekran kartı yok / az RAM** | `glm-ocr` (Hafif profil, Tesseract ile) | %0,03–1,4 (test kitaplarında) |
 | **16 GB+ RAM** (tercihen 8 GB+ VRAM'li ekran kartı) | `qwen2.5vl:7b`, `glm-ocr`, `gemma3:12b`, `qwen2.5:14b-instruct` | %1–2 |
 | **8–12 GB RAM** | `qwen2.5vl:3b`, `glm-ocr`, `gemma3:4b`, `qwen2.5:7b-instruct` | ~%5–8 |
 | **8 GB altı** | `qwen2.5vl:3b`, `glm-ocr` | ~%7–12 (düzeltme kural tabanlı) |
@@ -87,19 +117,30 @@ Model değiştirilen bir adıma (OCR, Düzeltme, Yapı, Kapak) girdiğinde sayfa
 
 Bu bir hata değil, bilgilendirmedir.
 
-### Model Yönetimi paneli
+### Ayarlar penceresi
 
-Üst çubuktaki model göstergesine tıklayınca panel açılır:
+Bütün ayarlar tek pencerede: üst çubuktaki **⚙ Ayarlar** düğmesine tıkla ya da **Ctrl+,** tuşlarına bas (macOS'ta Cmd+,). Model göstergesine tıklamak da pencereyi Modeller sekmesinde açar. **Esc** ile kapanır.
 
-- **Sistem bilgisi:** işletim sistemi, RAM ve modellere ayrılabilecek bellek, ekran kartı, işlemci, Ollama durumu.
-- **Otomatik / Elle seç:** Otomatik modda seçim donanıma göre yapılır. Bir seçeneğe tıklarsan elle moda geçilir ve seçimin uyarıya rağmen kullanılır.
-- **Her seçeneğin yanında:**
-  - yaklaşık bellek ihtiyacı
-  - hata payına etkisi
-  - "kurulu" ya da "kurulu değil · `ollama pull …`" etiketi
-  - gerekiyorsa "bu bilgisayar için ağır" uyarısı
-- **Altta:** tüm hattın tahmini kelime hata payı.
-- **↻ Yenile:** yeni model kurduktan sonra listeyi tazeler.
+Soldaki sekmeler:
+
+- **Modeller:** sistem bilgisi (işletim sistemi, RAM, ekran kartı ve belleği, işlemci, Ollama durumu) ve her görev için model seçimi.
+  - **Otomatik / Elle seç:** Otomatik modda seçim donanıma göre yapılır. Bir seçeneğe tıklarsan elle moda geçilir ve seçimin uyarıya rağmen kullanılır.
+  - Her seçeneğin yanında yaklaşık bellek ihtiyacı, hata payına etkisi, "kurulu" ya da "kurulu değil · İndir" etiketi ve gerekiyorsa "bu bilgisayar için ağır" uyarısı yazar.
+  - Altta tüm hattın tahmini kelime hata payı görünür.
+- **Tarama kalitesi:** sayfaların okuyucu modele hangi çözünürlükte gönderileceği.
+
+  | Seviye | Çözünürlük | Kime göre |
+  |---|---|---|
+  | Hızlı | 250 DPI | ekran kartı belleği 6 GB ve altı |
+  | Dengeli | 300 DPI | 8 GB civarı ekran kartı |
+  | En net | 450 DPI | 12 GB ve üstü; küçük/eski puntolu kitaplar |
+
+  **Otomatik** (önerilen) seviyeyi ekran kartına göre seçer. İlk sayfa okunduktan sonra modelin ekran kartına tamamen sığıp sığmadığını ölçer. Sığmıyorsa (modelin bir kısmı işlemcide çalışıyorsa sayfa başına süre birkaç katına çıkar) bir kademe düşürür, okumayı kaldığı yerden sürdürür ve sağ altta bir kartla haber verir. Karttaki **Geri al** eski seviyeye döner ve ayarı elle sabitler. Elle seçtiğin seviye hiç değişmez.
+- **Görünüm:** grafik kalitesi (aşağıda).
+- **Kurulum:** Python, Ollama, Türkçe sözlük ve OCR modelinin durumu, kurulu modeller; **Kurulum Sihirbazını aç** ve **Veri klasörünü aç** düğmeleri. Eksik bir şey varsa sekmenin yanında turuncu nokta çıkar.
+- **Hakkında:** sürüm, kitapların durduğu klasör ve GitHub sayfası.
+
+Pencerenin sağ üstündeki **↻ Yenile**, yeni model kurduktan sonra listeyi tazeler.
 
 **Kural tabanlı motor:** dil modeli olmadan çalışır.
 - Düzeltmede yalnız sözlükten kesin olan düzeltmeler uygulanır; gerisi "Elle bakılacaklar" listesine düşer.
@@ -108,7 +149,7 @@ Bu bir hata değil, bilgilendirmedir.
 
 ### Grafik kalitesi
 
-Üst çubuktaki **Kalite** seçicisinde Otomatik, Yüksek, Orta ve Düşük vardır.
+**Ayarlar → Görünüm** sekmesinde Otomatik, Yüksek, Orta ve Düşük vardır. Bu ayar yalnızca görüntüyü etkiler; OCR hızını değiştirmez.
 
 - **Otomatik:** kare hızı 35'in altına düşerse kalite bir kademe iner ve bir bildirim görünür.
 - **Düşük:** gölgeleri kapatır, parçacıkları ve hayvan sayısını azaltır, çözünürlüğü 1×'e indirir.
@@ -121,6 +162,8 @@ Zayıf dizüstü bilgisayarlarda Orta ya da Düşük önerilir.
 
 ### Üst çubuk
 
+Uygulama açılışta ekranı kaplayacak şekilde büyütülmüş açılır; üstte Windows'un File/Edit menüsü yoktur. **F11** tam ekrana geçirir ve geri alır.
+
 | Öğe | İşlevi |
 |---|---|
 | **E logosu** | Ana sahneye (hayat ağacı) döner |
@@ -129,8 +172,8 @@ Zayıf dizüstü bilgisayarlarda Orta ya da Düşük önerilir.
 | **Ağaç · OCR · Düzeltme · Yapı · Kapak · EPUB** | Adımlar arasında geçiş; renkli nokta tamamlanan adımı gösterir |
 | **Kitaplık** | Kovuk kütüphanesine iner |
 | **Mevsim** | İlkbahar / Yaz / Sonbahar / Kış ya da "↺ Bugün" (takvime göre) |
-| **Kalite** | Grafik kalitesi |
-| **Model göstergesi** | Model Yönetimi paneli |
+| **Model göstergesi** | Modellerin durumu; tıklayınca Ayarlar → Modeller |
+| **⚙ Ayarlar** | Modeller, tarama kalitesi, görünüm, kurulum, hakkında (Ctrl+,) |
 
 ### Ana sahne: hayat ağacı
 
@@ -140,19 +183,68 @@ Zayıf dizüstü bilgisayarlarda Orta ya da Düşük önerilir.
 - **Kovuğa giriş:** gövdedeki ışıklı kovuğa ya da ağaçtaki kitap yığınına tıkla.
 - **Açılış:** açılış animasyonunu yeniden oynatır. Animasyon sırasında tıklamak ya da Esc ile atlanır.
 
+### Dört mevsim ve gizli geçitler
+
+Ortadaki hayat ağacı, fenerleri ve kovuğu hep yerinde durur; çevresi her mevsim kendine özgü bir hal alır. Her mevsimde manzarada bir **gizli geçit** vardır. Üstüne gelince parıldar ve "✦ Gizli Geçit" yazar. Tıklayınca kamera geçide doğru yaklaşır ve bir **Keşif Geçidi** kartı açılır. Bu geçitler ileride eklenecek ikinci uygulamanın kapılarıdır; şimdilik kartta mevsimin küçük bir mesajı var. **← Ağaca Dön** (ya da Esc) kamerayı yavaşça eski yerine döndürür.
+
+| Mevsim | Manzara | Hayvanlar | Gizli geçit |
+|---|---|---|---|
+| **İlkbahar** | Gür şelale ve dibinde genişleyen su halkaları, kayalarda papatya ve menekşeler, sarmaşıklarla kapanmış mağara, polen zerreleri, yağmurdan sonra gökkuşağı, dönerek inen pembe çiçek yaprakları | Kıyı taşlarında zıplayan kurbağalar, kelebekler ve yusufçuklar, köklerde güneşlenen tavşan ailesi, geyikler | **Şelale perdesinin ardındaki** hafifçe parlayan kaya oyuğu |
+| **Yaz** | Gölet çekilir, ortada atlama taşları ve nilüferler çıkar; sağ çayırda rüzgârda dalgalanan altın başaklar; gölette güneş parıltıları, yapraklar arasından ışık hüzmeleri, köklerin gölgesinde ateş böcekleri | Taşta dinlenen kaplumbağa, ördek aileleri, başakların arasından bakan tilki, dallarda ötücü kuşlar, martılar | **İskeleye yanaşmış sandal** |
+| **Sonbahar** | Mağara açılır, ağzında ateş yanar; köklerde orman mantarları, kıyıda kuru yaprak yığınları, gölette süzülen yapraklar, uzak tepelerde sis | Dallarda palamut taşıyan sincaplar, mağaranın önünde kıvrılmış kirpi ailesi, V düzeninde göçmen kuşlar, mağaraya sığınan ayılar | **Mağaradaki ateşin derinliği** |
+| **Kış** | Şelale buz sarkıtlarına döner, gölet buz tutar, mağara karla örtülür; dolunaylı gece, yanıp sönen yıldızlar, sarkıtlarda kristal ışıltılar, dallardan dökülen kar tozu | Kovukta baykuşlar, buzun kıyısında karda iz bırakarak yürüyen kutup tilkisi, uzak tepede geyik silüeti, kurt sürüsü, tavşanlar | **Donmuş göletin ortasındaki dolunaylı buz aynası** |
+
+Geçit yalnızca kendi mevsiminde ve mevsim geçişi bittikten sonra tıklanabilir.
+
 ### 360° kovuk kütüphanesi
+
+Kovuğa tepedeki ışık açıklığından süzülerek inersin. Raflar ve merdiven rayı odanın çevresini kesintisiz dolaşır. Dışarı çıkmak için sol üstteki **← Ağaca dön** düğmesine bas ya da **Esc**'ye bas.
+
+Üst ortadaki anahtarla iki mod arasında geçersin; seçimin hatırlanır:
+
+- **Klasik:** sıcak ahşap ve kehribar ışık, kahverengi orman baykuşu.
+- **✦ Büyülü:** oda gece mavisine döner. Tavanda mumlar süzülür, aralarında altın tozlar ve kanat çırpar gibi uçan açık kitaplar dolaşır. Baykuş, yanında mühürlü bir mektupla kar beyazı bir baykuşa dönüşür. İmleç asaya döner ve arkasında kıvılcım izi bırakır.
+
+Alt ortada moda göre kısa bir ipucu şeridi 4 saniye görünür; sağ alttaki **?** ile tekrar açılır.
+
+**Her iki modda:**
 
 | Fare / tuş | Ne yapar |
 |---|---|
-| **Orta tuş (tekerlek) basılı + sürükle** | Odada 360° etrafa bakarsın: yukarıda kubbe ve ışık deliği, aşağıda zemin |
-| **Tekerlek** | Yaklaşır / uzaklaşır |
-| **Sol tık (kitaba)** | Kitabı seçer: raftan hafifçe çıkar ve sol altta bilgi kartı açılır. Seçiliyken tekrar tıklarsan açılır |
-| **Sol tık basılı + sürükle** | Kitabı taşır. Rafın üstüne getirince araya yer açılır; bırakınca yerleşir. Boşluğa bırakırsan yere düşer |
-| **Sağ tık (rafa)** | Rafa vurur, yakındaki kitaplar sallanıp yere düşer |
-| **Yerdeki kitaba sol tık** | Kitabı rafa geri koyar |
-| **Arkadaki ışıklı kemer** | Üstüne gelince parlar ve "Dışarı Çık" yazar; tıklayınca ağaca dönersin |
-| **← Ağaca dön düğmesi / Esc** | Aynı şekilde dışarı çıkar |
+| **Boş bir yeri sol tıkla tutup sürükle** | Odada 360° etrafa bakarsın. Hızlıca bırakırsan biraz süzülür. Orta tuşla sürüklemek de olur |
+| **Trackpad: iki parmakla kaydır** | Etrafa bakar |
+| **Trackpad: iki parmakla kıstır / aç** | Yaklaşır / uzaklaşır (duvara ve zemine girmez) |
+| **Ok tuşları ya da W A S D** | Etrafa bakar · **+ / −** ya da **Q / E** yaklaşır |
+| **Fare tekerleği** | Yaklaşır / uzaklaşır (Shift + tekerlek: sağa sola bakar) |
+| **Dokunmatik ekran** | Tek parmakla sürükle: bak · iki parmakla kıstır: yaklaş |
+| **Kitaba tıkla** | Kitabı seçer: raftan hafifçe çıkar ve sol altta bilgi kartı açılır |
+| **Kitabı tutup sürükle** | Başka rafa ya da sıraya taşır (5 pikselden az kıpırdarsa tıklama sayılır) |
+| **Merdiveni tutup sürükle** | Raydaki merdiven odanın çevresinde kayar |
+| **Boş bir yere çift tıkla** | Merdiven oraya yuvarlanır |
+| **Baykuşa tıkla** | Bazen kanat çırpar, bazen öter. Çok sık dürtersen (5 saniyede 4 kez) başka rafa uçar 🦉 |
+| **Ortadaki döner kitaplık** | Tıklayınca döner; sürükleyip fırlatırsan bir süre kendi kendine döner |
+| **Gizli bölmeler (iki rafın boş yeri)** | Tıklayınca raf gıcırdayarak döner, arkasında mumlu gizli bir köşe çıkar |
 | **EPUB dosyasını pencereye sürükle** | Dışarıdan bir e-kitabı rafa ekler |
+
+**Klasik modda ayrıca:**
+
+| Fare / tuş | Ne yapar |
+|---|---|
+| **Seçili kitaba tekrar tıkla** | Kitabı açar |
+| **Merdivene tıkla** | Merdiveni seçer (turuncu parlar); **← →** ile kaydırırsın. Başka yere tıklayınca bırakılır |
+| **Sağ tık (rafa)** | Rafa vurur; yakındaki kitaplar sallanıp yere düşer. Yerdeki kitaba tıklayınca rafa geri döner |
+
+**Büyülü modda ayrıca:**
+
+| Asa ile | Ne yapar |
+|---|---|
+| **Kitabı tutup sürükle** | Kitap altın bir haleyle havada süzülür. Bıraktığın rafa uçar; rafa denk gelmezse yere düşer (yerdeki kitaba tıklayınca rafa geri uçar) |
+| **Kitaba sağ tık ya da çift tık** | Kitap kıvılcımlarla raftan çıkıp önüne süzülür. Seni takip eder |
+| **Önündeki kitaba tıkla** | Kitap havada açılır. **← →** tuşlarıyla, asayı kitabın üstünde yana savurarak ya da sayfayı tutup yana çekerek sayfa çevrilir. Gerçek kitaplarda ilk sayfa iç kapaktır; okumak için karttaki **Kitabı aç** düğmesi |
+| **Önündeki kitaba sağ tık** | Kitap rafındaki yerine uçar |
+| **Merdivene tıkla** | Merdiven baktığın rafa kendi kendine süzülür |
+| **Boşluğa tıkla** | Asanın ucundan bir ışık küresi çıkıp tıkladığın yere süzülür ve oradaki rafları birkaç saniye aydınlatır |
+| **Esc** | Önce havadaki kitap kapanır, sonra önündeki kitap rafına döner, sonra kovuktan çıkarsın |
 
 Kırmızı ayraçlı kitaplar süren projelerdir; tıklayınca o projede sıradaki adıma gidilir. Bitmiş ERME baskıları onaylı bez cilt kapaklarıyla durur ve kartlarında "tamamlandı ✓" yazar. Rafların düzeni kaydedilir.
 
@@ -165,7 +257,7 @@ Her adım sonucunu `output/<kitap-adı>/` klasörüne yazar. Uygulamayı kapatı
 ### Adım 1 · OCR Tarama
 
 1. **Yeni PDF** ile kitabını ekle. Sol tarafta sayfa önizlemesi çıkar; ‹ › ile gezebilirsin.
-2. **Üç model OCR** açıksa sayfa üç kez okunur ve sonuçlar kelime kelime birleştirilir. Bu yaklaşık 3 kat yavaştır ama hataları belirgin biçimde azaltır. Model Yönetimi'nde ikinci okuma kapalıysa bu seçenek kendiliğinden tek okumaya döner.
+2. **Üç model OCR** açıksa sayfa üç kez okunur ve sonuçlar kelime kelime birleştirilir. Bu yaklaşık 3 kat yavaştır ama hataları belirgin biçimde azaltır. Ayarlar → Modeller'de ikinci okuma kapalıysa bu seçenek kendiliğinden tek okumaya döner.
 3. **Hızlı deneme** yalnız ilk 20 sayfayı işler. Yeni bir kitapta önce bununla dene.
 4. **Tam Zincir** OCR'ı ve ardından Düzeltme'yi arka arkaya çalıştırır. **Sadece OCR** yalnız okuma yapar.
 5. İlerleme çubuğu kalan süreyi gösterir. **Durdur** ile istediğin an kesebilirsin; tekrar başlatınca okunmuş sayfalar atlanır.
@@ -245,7 +337,7 @@ Okuma konumun kitap başına hatırlanır.
 
 | Durum | Çözüm |
 |---|---|
-| Üst çubukta **Ollama kapalı** yazıyor | Ollama uygulamasını aç (Linux: `ollama serve`), sonra Model Yönetimi'nde **↻ Yenile** |
+| Üst çubukta **Ollama kapalı** yazıyor | Ollama uygulamasını aç (Linux: `ollama serve`), sonra Ayarlar penceresinde **↻ Yenile** |
 | **Eksik model** uyarısı | Göstergeye tıkla, kurulu olmayan modelin yanındaki `ollama pull …` komutunu terminalde çalıştır |
 | Düzeltme "tr_TR.aff ve tr_TR.dic bu klasörde yok" diyor | Sözlük dosyalarını proje kök klasörüne koy (bölüm 1, adım 4) |
 | Python bulunamadı | Windows'ta Python'u *Add to PATH* ile yeniden kur ya da `KITAP_PYTHON` değişkeniyle yorumlayıcının yolunu ver |

@@ -687,6 +687,9 @@
       libEl.addEventListener('click', () => pick('lib')); libEl.addEventListener('mouseenter', () => (hover = 'lib')); libEl.addEventListener('mouseleave', () => (hover = -1));
       labelsEl.appendChild(libEl);
       const libScale = { x: 1, v: 0 };
+      // mevsimin gizli geçidi üstüne gelince küçük bir ipucu
+      const portalEl = document.createElement('div'); portalEl.className = 'portal-tip'; portalEl.setAttribute('aria-hidden', 'true');
+      portalEl.innerHTML = '<b>✦ Gizli Geçit</b><small>tıkla</small>'; labelsEl.appendChild(portalEl);
 
       // ---------- düşen parçacıklar ----------
       const NP = 90, fall = new T.InstancedMesh(leafGeo(0.085), new T.MeshStandardMaterial({ side: T.DoubleSide, roughness: 0.7 }), NP);
@@ -765,6 +768,10 @@
       function pick(i) {
         if (zoom || growT < 1.2) return;
         zoom = { i, t: 0 };
+        if (typeof i === 'string' && i.startsWith('portal:')) {   // mevsimin gizli geçidi: kamera yaklaşır, sonra Keşif Geçidi açılır
+          const season = i.slice(7); zoom.portal = season; portalEl.classList.remove('show');
+          setTimeout(() => { if (zoom && zoom.portal === season) opts.onPortal ? opts.onPortal({ season }) : (zoom = null); }, 950); return;
+        }
         if (i === 'hollow') { setTimeout(() => opts.onHollow && opts.onHollow(), 950); return; }   // kovuktan içeri: kütüphane
         setTimeout(() => opts.onPick && opts.onPick(i === 'lib' ? 'library' : items[i].S.tab), i === 'lib' ? 600 : 780);
       }
@@ -810,10 +817,15 @@
         // fare üstündeki kitap
         if (mouse.x > -2 && growT > 1.2) {
           ray.setFromCamera(mouse, cam);
-          const hit = ray.intersectObjects(raycastables, false)[0];
+          const hits = scenery && scenery.portalHits ? scenery.portalHits() : [];
+          const hit = ray.intersectObjects(hits.length ? raycastables.concat(hits) : raycastables, false)[0];
           const h = hit ? hit.object.userData.idx : -1;
           hover = h;
         }
+        const hp = typeof hover === 'string' && hover.startsWith('portal:') && !zoom ? hover.slice(7) : null;
+        if (scenery && scenery.portalHover) scenery.portalHover(hp || (zoom && zoom.portal) || null);
+        if (hp) { const v = scenery.portalView(hp); tmp.copy(v.at); tmp.y += 0.45; tmp.project(cam); portalEl.style.transform = `translate(${((tmp.x + 1) / 2) * cv.clientWidth}px, ${((1 - tmp.y) / 2) * cv.clientHeight}px) translate(-50%, -100%)`; }
+        portalEl.classList.toggle('show', !!hp);
         cv.style.cursor = hover !== -1 ? 'pointer' : 'default';
         // mevsimsel ağaç hali: kar, yosun, yaprak dökümü, güneş hüzmeleri
         { const k = 1 - Math.exp(-dt * 0.7); const rain = scenery ? scenery.env.rain : 0;
@@ -832,6 +844,7 @@
         U.uLamp.value[5].copy(hollow); U.uLampI.value[5] = 0.6;
         hollowLight.intensity = (1.3 + Math.sin(time * 3.1) * 0.12 + Math.sin(time * 7.7) * 0.06) * (hover === 'hollow' ? 1.9 : 1) + (zoom && zoom.i === 'hollow' ? 2 : 0);
         cv.title = hover === 'hollow' ? 'Kovuktaki kütüphaneye gir' : '';
+        const camW = zoom && zoom.portal ? 1.6 : 0;   // geçide yaklaşma biraz daha yumuşak
         // adım işaretleri
         const done = items.filter((x) => x.done).length;
         let lastDone = -1; items.forEach((x, k) => { if (x.done) lastDone = k; });
@@ -851,11 +864,12 @@
         // kamera
         let tp = [HOME.pos[0] + par.x * 0.95, HOME.pos[1] + par.y * 0.42, HOME.pos[2]], tl = [HOME.look[0] + par.x * 0.28, HOME.look[1] + par.y * 0.1, 0];   // fareye göre katmanlı paralaks
         if (zoom) {
-          if (zoom.i === 'hollow') { tp = [hollow.x, hollow.y + 0.02, hollow.z + 0.5 - smooth(clamp((zoom.t || 0) / 1.1)) * 0.45]; tl = [hollow.x, hollow.y, hollow.z - 1]; zoom.t = (zoom.t || 0) + dt; }
+          if (zoom.portal) { const v = scenery && scenery.portalView(zoom.portal); if (v) { tp = v.pos; tl = v.look; } zoom.t = (zoom.t || 0) + dt; }
+          else if (zoom.i === 'hollow') { tp = [hollow.x, hollow.y + 0.02, hollow.z + 0.5 - smooth(clamp((zoom.t || 0) / 1.1)) * 0.45]; tl = [hollow.x, hollow.y, hollow.z - 1]; zoom.t = (zoom.t || 0) + dt; }
           else if (zoom.i === 'lib') { lib.getWorldPosition(tmp); tp = [tmp.x + 0.2, tmp.y + 0.9, tmp.z + 2.6]; tl = [tmp.x, tmp.y + 0.15, tmp.z]; }
           else { items[zoom.i].grp.getWorldPosition(tmp); tp = [tmp.x * 0.8, tmp.y + 0.1, tmp.z + 2.6]; tl = [tmp.x, tmp.y, tmp.z]; }
         }
-        const w = zoom ? 4.2 : 2.0;
+        const w = zoom ? (camW || 4.2) : 2.0;
         cam.position.set(spring(camPos.x, tp[0], dt, w), spring(camPos.y, tp[1], dt, w), spring(camPos.z, tp[2], dt, w));
         cam.lookAt(spring(look.x, tl[0], dt, w), spring(look.y, tl[1], dt, w), spring(look.z, tl[2], dt, w));
         // parçacıklar

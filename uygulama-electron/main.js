@@ -1,6 +1,6 @@
 // main.js - Electron ana süreç. Python betikleri bir üst klasörde (kitap_ocr/) durur ve burada
 // alt süreç olarak çalıştırılır. Seçili yerel modeller betiklere KITAP_* ortam değişkenleriyle aktarılır.
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, screen } = require('electron');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -8,28 +8,62 @@ const http = require('http');
 const { spawn, execFile } = require('child_process');
 
 const BASE_DIR = path.resolve(__dirname, '..');
+// Kurulum.exe ile kurulduysa (paketli): betikler ve gömülü Python uygulamanın 'resources' klasöründe,
+// kitaplar ve çıktılar kullanıcının Belgeler\ERME BOOKS klasöründe durur. Geliştirme / ZIP kurulumunda
+// hepsi proje kökündedir.
+const PACKED = app.isPackaged;
+const SCRIPTS_DIR = PACKED ? path.join(process.resourcesPath, 'py') : BASE_DIR;
+let DATA_DIR = BASE_DIR;   // paketli modda app hazır olunca Belgeler\ERME BOOKS olur
+const BUNDLED_PY = PACKED ? path.join(process.resourcesPath, 'python', process.platform === 'win32' ? 'python.exe' : 'bin/python3') : '';
 // PATH'te python olmasa da Windows'ta 'py' başlatıcısı çalışıyor.
-const PYTHON = process.env.KITAP_PYTHON || (process.platform === 'win32' ? 'py' : 'python3');
+const PYTHON = process.env.KITAP_PYTHON || (BUNDLED_PY && fs.existsSync(BUNDLED_PY) ? BUNDLED_PY : process.platform === 'win32' ? 'py' : 'python3');
+// betik adı ('ocr.py') -> tam yol; çalışma klasörü veri klasörüdür
+const pyArgs = (args) => (args[0] && args[0].endsWith('.py') ? [path.join(SCRIPTS_DIR, args[0]), ...args.slice(1)] : args);
 const PY_ENV = { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' };
 
 let win = null;
 let current = null; // { proc, tabId, cancelled, finished }
 
 function createWindow() {
+  // Pencere ekranın çalışma alanını hiçbir zaman aşmasın (küçük/ölçekli ekranlarda sağ üst köşe taşmasın)
+  const wa = screen.getPrimaryDisplay().workAreaSize;
   win = new BrowserWindow({
-    width: 1340, height: 900, minWidth: 1100, minHeight: 720,
+    width: Math.min(1340, wa.width), height: Math.min(900, wa.height), minWidth: Math.min(960, wa.width), minHeight: Math.min(620, wa.height),
+    show: false, autoHideMenuBar: true,   // açılışta önce büyütülür, sonra gösterilir: hiçbir çözünürlükte taşma ya da sıçrama olmaz
     title: 'ERME BOOKS · Hayat Ağacı', backgroundColor: '#241c16',
+    icon: fs.existsSync(path.join(__dirname, 'build', 'icon.png')) ? path.join(__dirname, 'build', 'icon.png') : undefined,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+  });
+  win.setMenuBarVisibility(false);
+  win.once('ready-to-show', () => { win.maximize(); win.show(); win.focus(); });
+  // büyütme / küçültme / tam ekran sonrası 3B sahneler ve üst çubuk yeni boyuta hemen otursun
+  const resized = () => { if (win && !win.isDestroyed()) win.webContents.send('win:resized'); };
+  for (const ev of ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen', 'restore']) win.on(ev, resized);
+  // menü çubuğu yokken kullanışlı kısayollar: F11 tam ekran; geliştirirken Ctrl+Shift+I geliştirici araçları, Ctrl+R yenile
+  win.webContents.on('before-input-event', (e, input) => {
+    if (input.type !== 'keyDown') return;
+    if (input.key === 'F11') { e.preventDefault(); win.setFullScreen(!win.isFullScreen()); }
+    else if (!PACKED && input.control && input.shift && (input.key === 'I' || input.key === 'i')) { e.preventDefault(); win.webContents.toggleDevTools(); }
+    else if (!PACKED && input.control && !input.shift && (input.key === 'r' || input.key === 'R')) { e.preventDefault(); win.webContents.reload(); }
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
+// Varsayılan File/Edit/View menüsü kaldırılır. macOS'ta kopyala/yapıştır kısayolları menüye bağlı olduğundan orada yalnız uygulama + düzen menüsü kalır.
+function setupMenu() {
+  if (process.platform === 'darwin') Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }]));
+  else Menu.setApplicationMenu(null);
+}
 
-app.whenReady().then(() => { createWindow(); modelState(true).catch(() => null); });
+app.whenReady().then(() => {
+  if (PACKED) DATA_DIR = path.join(app.getPath('documents'), 'ERME BOOKS');
+  for (const d of ['input', 'output', 'epubs']) { try { fs.mkdirSync(path.join(DATA_DIR, d), { recursive: true }); } catch {} }
+  setupMenu(); createWindow(); modelState(true).catch(() => null);
+});
 app.on('window-all-closed', () => { killCurrent(); app.quit(); });
 
 // ---------- yardımcılar ----------
-const inputDir = () => path.join(BASE_DIR, 'input');
-const outDir = (slug) => path.join(BASE_DIR, 'output', slug);
+const inputDir = () => path.join(DATA_DIR, 'input');
+const outDir = (slug) => path.join(DATA_DIR, 'output', slug);
 
 function paths(slug) {
   const o = outDir(slug);
@@ -45,35 +79,31 @@ function paths(slug) {
     cover: path.join(o, 'kapak.jpg'),
     coverWrap: path.join(o, 'kapak_sarim.jpg'),     // bez cilt: arka kapak + sırt + ön kapak tek parça
     coverTheme: path.join(o, 'kapak_tema.json'),
-    epub: path.join(BASE_DIR, 'epubs', `${slug}.epub`),
+    epub: path.join(DATA_DIR, 'epubs', `${slug}.epub`),
   };
 }
 
 async function runPy(args, maxBuffer = 16 * 1024 * 1024) {
   if (!args[0]?.startsWith('render_page')) await modelState().catch(() => null);   // seçili modeller ortama yazılsın (önizleme hariç)
   return new Promise((resolve) => {
-    execFile(PYTHON, args, { cwd: BASE_DIR, env: pyEnv(), maxBuffer, windowsHide: true, encoding: 'utf8' },
+    execFile(PYTHON, pyArgs(args), { cwd: DATA_DIR, env: pyEnv(), maxBuffer, windowsHide: true, encoding: 'utf8' },
       (err, stdout, stderr) => resolve({ code: err ? (err.code ?? 1) : 0, stdout: stdout || '', stderr: stderr || '', err }));
   });
 }
 
 function killCurrent() {
   if (!current || current.finished) return;
-  current.cancelled = true;
-  if (process.platform === 'win32') {
-    execFile('taskkill', ['/pid', String(current.proc.pid), '/T', '/F'], { windowsHide: true }, () => {});
-  } else {
-    current.proc.kill('SIGTERM');
-  }
+  current.cancelled = true; current.restarting = false;
+  killProc(current.proc);
 }
 
 // ---------- kitaplar ----------
 ipcMain.handle('books:list', () => {
   fs.mkdirSync(inputDir(), { recursive: true });
-  fs.mkdirSync(path.join(BASE_DIR, 'output'), { recursive: true });
+  fs.mkdirSync(path.join(DATA_DIR, 'output'), { recursive: true });
   const slugs = new Set();
   for (const f of fs.readdirSync(inputDir())) if (f.toLowerCase().endsWith('.pdf')) slugs.add(f.slice(0, -4));
-  for (const d of fs.readdirSync(path.join(BASE_DIR, 'output'), { withFileTypes: true })) if (d.isDirectory()) slugs.add(d.name);
+  for (const d of fs.readdirSync(path.join(DATA_DIR, 'output'), { withFileTypes: true })) if (d.isDirectory()) slugs.add(d.name);
   return [...slugs].sort((a, b) => a.localeCompare(b, 'tr'));
 });
 
@@ -109,24 +139,86 @@ ipcMain.handle('pdf:page', async (_e, slug, page) => {
 ipcMain.handle('proc:run', async (_e, tabId, args) => {
   if (current && !current.finished) return { error: 'Zaten çalışan bir işlem var. Önce onu durdur.' };
   await modelState(true);   // seçili modeller ortam değişkenlerine yazılsın
-  const proc = spawn(PYTHON, ['-u', ...args], { cwd: BASE_DIR, env: pyEnv(), windowsHide: true });
-  const job = { proc, tabId, cancelled: false, finished: false };
+  const job = { tabId, args, cancelled: false, finished: false, restarting: false, isOcr: args[0] === 'ocr.py', checked: false };
+  job.send = (text) => win && !win.isDestroyed() && win.webContents.send('proc:log', { tabId, text });
   current = job;
-  const send = (text) => win && win.webContents.send('proc:log', { tabId, text });
+  if (job.isOcr) {
+    const sc = modelCache.scan;
+    job.send(`[AYAR] Tarama kalitesi: ${sc.ad} · ${sc.dpi} DPI · bağlam ${sc.ctx} (${sc.kaynak === 'elle' ? 'elle seçildi' : sc.kaynak === 'olcum' ? 'önceki ölçüme göre: ' + sc.neden : 'otomatik: ' + sc.neden})\n`);
+  }
+  spawnJob(job);
+  return { ok: true };
+});
+function spawnJob(job) {
+  const proc = spawn(PYTHON, ['-u', ...pyArgs(job.args)], { cwd: DATA_DIR, env: pyEnv(), windowsHide: true });
+  job.proc = proc;
   const finish = (code) => {
-    if (job.finished) return;
+    if (job.finished || job.proc !== proc) return;
+    if (job.restarting) { job.restarting = false; job.checked = false; spawnJob(job); return; }
     job.finished = true;
     if (current === job) current = null;
-    win && win.webContents.send('proc:done', { tabId, code, cancelled: job.cancelled });
+    win && !win.isDestroyed() && win.webContents.send('proc:done', { tabId: job.tabId, code, cancelled: job.cancelled });
   };
   proc.stdout.setEncoding('utf8');
   proc.stderr.setEncoding('utf8');
-  proc.stdout.on('data', send);
-  proc.stderr.on('data', send);
-  proc.on('error', (err) => { send(`\n[HATA] Python başlatılamadı: ${err.message}\n`); finish(1); });
+  proc.stdout.on('data', (t) => { job.send(t); if (job.isOcr && !job.checked) watchFit(job, t); });
+  proc.stderr.on('data', job.send);
+  proc.on('error', (err) => { job.send(`\n[HATA] Python başlatılamadı: ${err.message}\n`); finish(1); });
   proc.on('close', (code) => finish(code ?? 1));
-  return { ok: true };
-});
+}
+function killProc(proc) {
+  if (!proc) return;
+  if (process.platform === 'win32') execFile('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true }, () => {});
+  else proc.kill('SIGTERM');
+}
+// Aynı komutu yeni ortam ayarlarıyla yeniden başlatır; ocr.py --resume ile okunmuş sayfaları atlar.
+async function restartJob(job) {
+  if (job.finished || job.restarting) return;
+  await modelState(true);
+  if (job.isOcr && !job.args.includes('--resume')) job.args = [...job.args, '--resume'];
+  job.restarting = true;
+  killProc(job.proc);
+}
+function ollamaPs() { return new Promise((resolve) => {
+  const req = http.get('http://localhost:11434/api/ps', { timeout: 2500 }, (res) => {
+    let body = ''; res.on('data', (c) => (body += c));
+    res.on('end', () => { try { resolve(JSON.parse(body).models || []); } catch { resolve([]); } });
+  });
+  req.on('timeout', () => { req.destroy(); resolve([]); });
+  req.on('error', () => resolve([]));
+}); }
+// İlk gerçek sayfa bitince: okuyucu model ekran kartına tamamen sığmış mı? Sığmadıysa haber ver, otomatikte bir kademe düşür.
+async function watchFit(job, text) {
+  const m = text.match(/Sayfa \d+\/\d+ (?:tamamlandı \[[^\]]*\]|işlendi) \(([\d.]+)sn\)/);   // üstbilgi taramasının ilk sayfası da sayılır
+  if (!m || +m[1] < 0.5) return;
+  job.checked = true;
+  const want = modelEnv.KITAP_VISION_MODEL || '';
+  const list = await ollamaPs();
+  const e = list.find((x) => x.name === want || x.model === want || x.name === want + ':latest') || (list.length === 1 ? list[0] : null);
+  if (!e || !e.size || job.finished) return;
+  const gpu = Math.max(0, Math.min(1, (e.size_vram || 0) / e.size)), cpuPct = Math.round((1 - gpu) * 100), secs = Math.round(+m[1]);
+  if (gpu >= 0.97 || process.platform === 'darwin') {
+    job.send(`[AYAR] Okuyucu model tamamen ekran kartında çalışıyor (sayfa başı ~${secs} sn).\n`);
+    return;
+  }
+  const st = modelCache || await modelState(true), sc = st.scan;
+  const idx = SCAN_ORDER.indexOf(sc.level);
+  const noGpu = gpu < 0.03;
+  const what = noGpu ? 'Okuyucu model ekran kartını kullanmıyor, tamamen işlemcide çalışıyor' : `Okuyucu model ekran kartına sığmadı: %${cpuPct} kadarı işlemcide çalışıyor`;
+  const ev = { from: sc.level, fromAd: sc.ad, cpuPct, secs, noGpu, model: e.name };
+  if (sc.mode === 'otomatik' && idx > 0) {
+    const to = noGpu ? 'hizli' : SCAN_ORDER[idx - 1], L = SCAN_LEVELS[to];
+    const cur = readModelSettings();
+    writeModelSettings({ ...cur, tarama: { ...cur.tarama, learned: { level: to, neden: `${what.toLowerCase()} (${new Date().toLocaleDateString('tr-TR')})`, at: Date.now() } } });
+    job.send(`\n[AYAR] ${what} (sayfa başı ~${secs} sn).\n[AYAR] Tarama kalitesi "${sc.ad}" → "${L.ad}" (${L.dpi} DPI, bağlam ${L.ctx}) düşürüldü; okuma kaldığı yerden sürüyor. Geri almak için: Ayarlar → Tarama kalitesi.\n`);
+    win && !win.isDestroyed() && win.webContents.send('scan:changed', { ...ev, kind: 'dusuruldu', to, toAd: L.ad });
+    restartJob(job);
+  } else {
+    const tip = idx > 0 ? `"${SCAN_LEVELS[SCAN_ORDER[0]].ad}" tarama kalitesi ya da daha hafif okuyucu (Qwen2.5-VL 3B)` : 'daha hafif okuyucu model (Qwen2.5-VL 3B)';
+    job.send(`\n[AYAR] ${what} (sayfa başı ~${secs} sn). Hızlandırmak için ${tip} seçilebilir: Ayarlar → Tarama kalitesi.\n`);
+    win && !win.isDestroyed() && win.webContents.send('scan:changed', { ...ev, kind: 'uyari', tip });
+  }
+}
 
 ipcMain.handle('proc:stop', () => { killCurrent(); return true; });
 
@@ -138,7 +230,7 @@ ipcMain.handle('file:open', async (_e, p) => {
 });
 
 ipcMain.handle('folder:epubs', async () => {
-  const d = path.join(BASE_DIR, 'epubs');
+  const d = path.join(DATA_DIR, 'epubs');
   fs.mkdirSync(d, { recursive: true });
   await shell.openPath(d);
 });
@@ -227,7 +319,7 @@ ipcMain.handle('epub:read', async (_e, file) => {
 
 ipcMain.handle('epub:templates', () => {
   const out = {};
-  for (const t of ['klasik', 'modern', 'genis']) out[t] = readText(path.join(BASE_DIR, 'assets', 'epub', 'templates', `${t}.css`)) || '';
+  for (const t of ['klasik', 'modern', 'genis']) out[t] = readText(path.join(SCRIPTS_DIR, 'assets', 'epub', 'templates', `${t}.css`)) || '';
   return out;
 });
 
@@ -247,7 +339,7 @@ ipcMain.handle('structure:save', (_e, slug, { title, author }) => {
 // ---------- kapak ----------
 let mascotNames = null; // generate_mascots_ai.py'deki tüm isimler (bir kez okunur)
 ipcMain.handle('mascots:list', async () => {
-  const d = path.join(BASE_DIR, 'assets', 'mascots');
+  const d = path.join(SCRIPTS_DIR, 'assets', 'mascots');
   const available = new Set();
   if (fs.existsSync(d)) {
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
@@ -315,7 +407,7 @@ function coverWrap(slug) {
 ipcMain.handle('cover:wrap', (_e, slug) => coverWrap(slug));
 
 // ---------- kitaplık ----------
-const epubDir = () => path.join(BASE_DIR, 'epubs');
+const epubDir = () => path.join(DATA_DIR, 'epubs');
 const epubCache = new Map(); // dosya -> { mtime, info } ; EPUB'lar değişmedikçe Python tekrar çağrılmaz
 
 async function loadEpubInfos(files) {
@@ -473,6 +565,29 @@ ipcMain.handle('models:required', async () => {   // etkin (seçili) modeller; k
   return { ocr: st.roles.ocr.secili, second: st.roles.second.secili, third: st.roles.third.secili, editor: st.roles.text.secili };
 });
 
+// ---------- okuma profili: süre tahmini ----------
+// sure_tahmini.py her profil (Çok hızlı / Hafif / Standart / Güçlü) için bu kitapta, bu bilgisayarda tahmini
+// süreyi verir. sina=true: PDF'in metin katmanı gerçekten sınanır (sözlük + Tesseract, birkaç saniye); sonuç
+// PDF değişmedikçe saklanır.
+const katmanCache = new Map();   // pdf yolu -> { mtime, veri }
+ipcMain.handle('sure:tahmin', async (_e, slug, sina) => {
+  const p = paths(slug);
+  let st; try { st = fs.statSync(p.pdf); } catch { return { error: 'Bu kitabın PDF dosyası input/ klasöründe yok.' }; }
+  const c = katmanCache.get(p.pdf);
+  if (sina && c && c.mtime === st.mtimeMs) return c.veri;
+  const sys = await sysInfo();
+  const args = ['sure_tahmini.py', '--pdf', p.pdf, '--json', '--ram', String(sys.totalGB), '--cekirdek', String(sys.cores)];
+  if (sys.appleSilicon) args.push('--birlesik');
+  else args.push('--vram', String(sys.vramGB ?? (sys.dedicated ? 8 : 0)));
+  if (!tesseractPath()) args.push('--tesseract-yok');
+  if (sina) args.push('--katman-sina');
+  const r = await runPy(args, 32 * 1024 * 1024);
+  let veri;
+  try { veri = JSON.parse(r.stdout.trim().split('\n').pop()); } catch { return { error: (r.stderr || r.stdout || 'Tahmin yapılamadı.').slice(-400) }; }
+  if (sina) katmanCache.set(p.pdf, { mtime: st.mtimeMs, veri });
+  return veri;
+});
+
 // ---------- doğruluk ölçümü ----------
 ipcMain.handle('eval:ref', async (_e, slug) => {
   const r = await runPy(['degerlendir.py', '--book', slug, '--find-only']);
@@ -499,25 +614,81 @@ function ollamaTags() { return new Promise((resolve) => {
 // hata: o seçeneğin tüm hattın kelime hata payına tahmini katkısı (yüzde puan, [alt, üst]).
 const MODEL_CATALOG = {
   ocr: { ad: 'OCR · ana okuyucu', env: ['KITAP_VISION_MODEL'], zorunlu: true, secenek: [
-    { id: 'qwen2.5vl:7b', ad: 'Qwen2.5-VL 7B', ram: 6, hata: [0, 0], tur: 'standart' },
-    { id: 'qwen2.5vl:3b', ad: 'Qwen2.5-VL 3B', ram: 3.5, hata: [2, 3], tur: 'hafif' }] },
+    { id: 'qwen2.5vl:7b', ad: 'Qwen2.5-VL 7B', ram: 6, indir: 6, hata: [0, 0], tur: 'standart' },
+    { id: 'qwen2.5vl:3b', ad: 'Qwen2.5-VL 3B', ram: 3.5, indir: 3.2, hata: [2, 3], tur: 'hafif' },
+    // Ollama modeli değil: hafif_ocr.py (metin katmanı ya da Tesseract; şüpheli satırları ikinci okuma modeli okur)
+    { id: 'hafif', ad: 'Hızlı · işlemci (Tesseract + GLM-OCR)', ram: 1, indir: 0, hata: [1, 3], tur: 'hafif', yerel: true }] },
   second: { ad: 'OCR · ikinci okuma', env: ['KITAP_SECOND_MODEL'], secenek: [
-    { id: 'glm-ocr', ad: 'GLM-OCR', ram: 2.5, hata: [0, 0], tur: 'standart' },
+    { id: 'glm-ocr', ad: 'GLM-OCR', ram: 2.5, indir: 2.2, hata: [0, 0], tur: 'standart' },
     { id: '', ad: 'Kapalı (tek okuma)', ram: 0, hata: [1, 2], tur: 'kapali' }] },
   third: { ad: 'OCR · anlaşmazlıkta oy', env: ['KITAP_THIRD_MODEL'], secenek: [
-    { id: 'gemma3:12b', ad: 'Gemma 3 12B', ram: 9, hata: [0, 0], tur: 'standart' },
-    { id: 'gemma3:4b', ad: 'Gemma 3 4B', ram: 4, hata: [0.5, 1], tur: 'hafif' },
+    { id: 'gemma3:12b', ad: 'Gemma 3 12B', ram: 9, indir: 8.1, hata: [0, 0], tur: 'standart' },
+    { id: 'gemma3:4b', ad: 'Gemma 3 4B', ram: 4, indir: 3.3, hata: [0.5, 1], tur: 'hafif' },
     { id: '', ad: 'Kapalı (oylama yok)', ram: 0, hata: [1, 1.5], tur: 'kapali' }] },
   text: { ad: 'Metin düzeltme · bölüm tespiti · kapak teması', env: ['KITAP_EDITOR_MODEL', 'KITAP_TEXT_MODEL'], secenek: [
-    { id: 'qwen2.5:14b-instruct', ad: 'Qwen2.5 14B Instruct', ram: 10, hata: [0, 0], tur: 'standart' },
-    { id: 'qwen2.5:7b-instruct', ad: 'Qwen2.5 7B Instruct', ram: 5.5, hata: [1, 2], tur: 'hafif' },
+    { id: 'qwen2.5:14b-instruct', ad: 'Qwen2.5 14B Instruct', ram: 10, indir: 9, hata: [0, 0], tur: 'standart' },
+    { id: 'qwen2.5:7b-instruct', ad: 'Qwen2.5 7B Instruct', ram: 5.5, indir: 4.7, hata: [1, 2], tur: 'hafif' },
     { id: '', ad: 'Kural tabanlı motor (dil modeli yok)', ram: 0, hata: [3, 5], tur: 'kapali' }] },
 };
 const BASE_ERR = [1, 2];
 const settingsFile = () => path.join(app.getPath('userData'), 'model_ayarlari.json');
 function readModelSettings() {
-  try { const s = JSON.parse(fs.readFileSync(settingsFile(), 'utf8')); return { mode: s.mode === 'elle' ? 'elle' : 'otomatik', manual: s.manual || {} }; }
-  catch { return { mode: 'otomatik', manual: {} }; }
+  let s = {}; try { s = JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) || {}; } catch {}
+  const t = s.tarama || {};
+  return { mode: s.mode === 'elle' ? 'elle' : 'otomatik', manual: s.manual || {},
+    tarama: { mode: t.mode === 'elle' ? 'elle' : 'otomatik', level: SCAN_LEVELS[t.level] ? t.level : '', learned: t.learned && SCAN_LEVELS[t.learned.level] ? t.learned : null } };
+}
+function writeModelSettings(next) {
+  try { fs.mkdirSync(path.dirname(settingsFile()), { recursive: true }); fs.writeFileSync(settingsFile(), JSON.stringify(next, null, 2), 'utf8'); } catch {}
+}
+
+// ---------- tarama kalitesi: sayfa çözünürlüğü (DPI) + bağlam penceresi ----------
+// İkisi birlikte okuyucu modelin ekran kartında kapladığı yeri belirler. Model ekran kartına sığmazsa bir kısmı
+// işlemcide çalışır ve sayfa başına süre birkaç katına çıkar; bu yüzden seviye donanıma göre seçilir ve
+// OCR sırasında gerçekten sığıp sığmadığı ölçülerek gerekirse (kullanıcıya haber verilerek) bir kademe düşürülür.
+const SCAN_LEVELS = {
+  hizli:   { ad: 'Hızlı',   dpi: 250, ctx: 6144,  kim: 'ekran kartı belleği 6 GB ve altı', not: 'Normal punto için yeterli; çok küçük yazıda hata artabilir.' },
+  dengeli: { ad: 'Dengeli', dpi: 300, ctx: 8192,  kim: '8 GB civarı ekran kartı', not: 'Çoğu kitap için net ve hızlı.' },
+  net:     { ad: 'En net',  dpi: 450, ctx: 16384, kim: '12 GB ve üstü ekran kartı', not: 'Küçük/eski puntoda en iyi okuma; en yavaşı.' },
+};
+const SCAN_ORDER = ['hizli', 'dengeli', 'net'];
+function scanByHardware(sys) {
+  if (sys.appleSilicon) {   // birleşik bellek: ekran kartı ayrı değil
+    const lvl = sys.totalGB >= 24 ? 'net' : sys.totalGB >= 16 ? 'dengeli' : 'hizli';
+    return { level: lvl, neden: `${fmtGB(sys.totalGB)} birleşik bellek` };
+  }
+  if (sys.vramGB == null) return { level: 'dengeli', neden: 'ekran kartı belleği okunamadı, ortadaki seviye seçildi' };
+  if (!sys.dedicated && sys.vramGB < 4) return { level: 'hizli', neden: 'harici ekran kartı yok' };
+  const lvl = sys.vramGB >= 11 ? 'net' : sys.vramGB >= 7.5 ? 'dengeli' : 'hizli';
+  return { level: lvl, neden: `ekran kartı belleği ${fmtGB(sys.vramGB)}` };
+}
+const fmtGB = (v) => `${(Math.round(v * 10) / 10).toLocaleString('tr-TR')} GB`;
+function scanState(sys, set) {
+  const T = set.tarama, hw = scanByHardware(sys);
+  let level, neden, kaynak;
+  if (T.mode === 'elle' && T.level) { level = T.level; neden = 'elle seçildi'; kaynak = 'elle'; }
+  else if (T.learned) { level = T.learned.level; neden = T.learned.neden; kaynak = 'olcum'; }
+  else { level = hw.level; neden = hw.neden; kaynak = 'donanim'; }
+  const L = SCAN_LEVELS[level];
+  return { mode: T.mode, level, ad: L.ad, dpi: L.dpi, ctx: L.ctx, neden, kaynak, donanim: hw,
+    levels: SCAN_ORDER.map((k) => ({ id: k, ...SCAN_LEVELS[k] })) };
+}
+// Ekran kartı belleği: önce nvidia-smi, Windows'ta yoksa kayıt defterindeki sürücü bilgisi (AMD/Intel dahil)
+function execOut(cmd, args, ms = 6000) {
+  return new Promise((resolve) => execFile(cmd, args, { windowsHide: true, timeout: ms, encoding: 'utf8' }, (err, out) => resolve(err ? '' : String(out || ''))));
+}
+async function detectVram() {
+  const nv = await execOut('nvidia-smi', ['--query-gpu=memory.total', '--format=csv,noheader,nounits']);
+  const mb = nv.split(/\r?\n/).map((x) => parseFloat(x)).filter((x) => x > 0);
+  if (mb.length) return Math.round((Math.max(...mb) / 1024) * 10) / 10;
+  if (process.platform === 'win32') {
+    const ps = "$k='HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}';" +
+      "Get-ChildItem $k -ErrorAction SilentlyContinue | ForEach-Object { $v=(Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).'HardwareInformation.qwMemorySize'; if($v){ [string]$v } }";
+    const out = await execOut('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], 9000);
+    const b = out.split(/\r?\n/).map((x) => Number(x.trim())).filter((x) => x > 256 * 1048576);
+    if (b.length) return Math.round((Math.max(...b) / 1073741824) * 10) / 10;
+  }
+  return null;
 }
 let sysCache = null;
 async function sysInfo() {
@@ -539,8 +710,21 @@ async function sysInfo() {
     os: `${OSN[process.platform] || process.platform} ${os.release()}`, platform: process.platform, arch: process.arch,
     totalGB: gb(os.totalmem()), cpu: (os.cpus()[0]?.model || '').replace(/\s+/g, ' ').trim(), cores: os.cpus().length,
     gpu: (rendName || names.join(', ') || 'Bulunamadı').trim(), dedicated, appleSilicon,
+    vramGB: appleSilicon ? null : await detectVram().catch(() => null),
   };
   return sysCache;
+}
+// Tesseract (Hızlı · işlemci okuyucu için): KITAP_TESSERACT, PATH ya da varsayılan kurulum klasörü
+function tesseractPath() {
+  const exe = process.platform === 'win32' ? 'tesseract.exe' : 'tesseract';
+  const c = [process.env.KITAP_TESSERACT,
+    // paketli kurulum: resources/tesseract; kaynak klasör: proje kökünde tesseract/
+    PACKED ? path.join(process.resourcesPath, 'tesseract', exe) : '', path.join(BASE_DIR, 'tesseract', exe),
+    ...(process.env.PATH || '').split(path.delimiter).filter(Boolean).map((d) => path.join(d, exe)),
+    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Tesseract-OCR', 'tesseract.exe'),
+    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Tesseract-OCR', 'tesseract.exe'),
+    '/opt/homebrew/bin/tesseract', '/usr/local/bin/tesseract', '/usr/bin/tesseract'];
+  return c.find((p) => { try { return !!p && fs.statSync(p).isFile(); } catch { return false; } }) || '';
 }
 let modelCache = null, modelCacheT = 0;
 // Otomatik mod: bellek sınırına sığan ve kurulu olan en güçlü seçenek; zorunlu olmayan görev sığmıyor/kurulu değilse kapatılır.
@@ -553,33 +737,172 @@ async function modelState(force = false) {
   const roles = {}, notes = [], env = {};
   let lo = BASE_ERR[0], hi = BASE_ERR[1];
   for (const [key, R] of Object.entries(MODEL_CATALOG)) {
-    const opts = R.secenek.map((o) => ({ ...o, kurulu: !o.id || have.has(o.id), sigar: o.ram <= limit }));
+    const opts = R.secenek.map((o) => ({ ...o, kurulu: o.yerel ? !!tesseractPath() : !o.id || have.has(o.id), sigar: o.ram <= limit }));
     const best = opts[0];
     let pick;
     if (set.mode === 'elle' && opts.some((o) => o.id === set.manual[key])) pick = opts.find((o) => o.id === set.manual[key]);
     else {
-      pick = opts.find((o) => o.id && o.sigar && (o.kurulu || !tags.up))
-        || (R.zorunlu ? opts.find((o) => o.sigar) || opts[opts.length - 1] : opts.find((o) => !o.id));
+      pick = opts.find((o) => o.id && !o.yerel && o.sigar && (o.kurulu || !tags.up))
+        || (R.zorunlu ? opts.find((o) => o.sigar && (!o.yerel || o.kurulu)) || opts[opts.length - 1] : opts.find((o) => !o.id));
+      // Harici ekran kartı yoksa vision modeli işlemcide saatler sürer: Tesseract kuruluysa hızlı okuyucu seçilir.
+      const hizli = opts.find((o) => o.yerel && o.kurulu);
+      if (hizli && !sys.dedicated && !sys.appleSilicon) pick = hizli;
     }
     roles[key] = { ad: R.ad, zorunlu: !!R.zorunlu, secili: pick.id, secenek: opts };
     lo += pick.hata[0]; hi += pick.hata[1];
-    for (const e of R.env) env[e] = pick.id;
+    for (const e of R.env) env[e] = pick.yerel ? '' : pick.id;   // hızlı okuyucu: Python betikleri kendi varsayılanını kullanır
     if (pick.id !== best.id) {
-      const neden = set.mode === 'elle' ? 'elle seçildi' : !best.sigar ? `donanım (${sys.totalGB} GB RAM, ${sys.dedicated ? 'harici GPU' : 'dahili GPU'})` : !best.kurulu ? 'model kurulu değil' : '';
+      const neden = set.mode === 'elle' ? 'elle seçildi' : pick.yerel && best.sigar && best.kurulu ? 'harici ekran kartı yok' : !best.sigar ? `donanım (${sys.totalGB} GB RAM, ${sys.dedicated ? 'harici GPU' : 'dahili GPU'})` : !best.kurulu ? 'model kurulu değil' : '';
       notes.push({ rol: key, rolAd: R.ad, devre: best.ad, yerine: pick.ad, kapali: !pick.id, neden, kur: !best.kurulu ? `ollama pull ${best.id}` : '' });
     }
   }
+  const scan = scanState(sys, set);
+  env.KITAP_DPI = String(scan.dpi); env.KITAP_NUM_CTX = String(scan.ctx);
   modelEnv = env;
-  modelCache = { sys, up: !!tags.up, installed: [...have], mode: set.mode, limitGB: limit, roles, notes, err: [Math.round(lo), Math.round(hi)], baseErr: BASE_ERR };
+  modelCache = { sys, up: !!tags.up, installed: [...have], mode: set.mode, limitGB: limit, roles, notes, scan, err: [Math.round(lo), Math.round(hi)], baseErr: BASE_ERR };
   modelCacheT = Date.now();
   return modelCache;
 }
 let modelEnv = {};
-const pyEnv = () => ({ ...PY_ENV, ...modelEnv });
+// Bulunan Tesseract betiklere de bildirilir (paketli kurulumdaki gömülü Tesseract PATH'te olmaz)
+const pyEnv = () => { const t = tesseractPath(); return { ...PY_ENV, ...(t && !PY_ENV.KITAP_TESSERACT ? { KITAP_TESSERACT: t } : {}), ...modelEnv }; };
 ipcMain.handle('models:state', (_e, force) => modelState(!!force));
+
+// ---------- İlk Kurulum Sihirbazı: Ollama, Türkçe sözlük ve modeller (terminal gerekmez) ----------
+const https = require('https');
+const sendSetup = (d) => win && !win.isDestroyed() && win.webContents.send('setup:progress', d);
+const DICT_BASE = 'https://github.com/tdd-ai/hunspell-tr/raw/main/';
+const dictOk = () => ['tr_TR.aff', 'tr_TR.dic'].every((f) => { try { return fs.statSync(path.join(SCRIPTS_DIR, f)).size > 100 * 1024; } catch { return false; } });
+function ollamaExe() {
+  const c = process.platform === 'win32'
+    ? [path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Ollama', 'ollama app.exe'), path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Ollama', 'ollama.exe'), path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Ollama', 'ollama app.exe')]
+    : process.platform === 'darwin' ? ['/Applications/Ollama.app'] : ['/usr/local/bin/ollama', '/usr/bin/ollama'];
+  return c.find((p) => { try { return fs.existsSync(p); } catch { return false; } }) || '';
+}
+function pythonVersion() {
+  return new Promise((resolve) => execFile(PYTHON, ['--version'], { windowsHide: true, timeout: 8000 }, (err, out, errOut) => {
+    const v = String(out || errOut || '').trim(); resolve(!err && /Python 3\.(1\d|[2-9]\d)/.test(v) ? v : '');
+  }));
+}
+// GitHub ham dosyaları yönlendirme ile gelir; yönlendirmeleri izleyerek indir, ilerlemeyi bildir
+function download(url, dest, onPct, hops = 0) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { headers: { 'User-Agent': 'ERME-BOOKS' } }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && hops < 6) { res.resume(); return resolve(download(new URL(res.headers.location, url).toString(), dest, onPct, hops + 1)); }
+      if (res.statusCode !== 200) { res.resume(); return reject(new Error(`HTTP ${res.statusCode}`)); }
+      const total = +res.headers['content-length'] || 0; let got = 0;
+      const tmp = dest + '.part', out = fs.createWriteStream(tmp);
+      res.on('data', (c) => { got += c.length; if (total) onPct && onPct(got / total); });
+      res.pipe(out);
+      out.on('finish', () => out.close(() => { try { fs.renameSync(tmp, dest); resolve(dest); } catch (e) { reject(e); } }));
+      out.on('error', reject); res.on('error', reject);
+    });
+    req.on('error', reject); req.setTimeout(60000, () => req.destroy(new Error('zaman aşımı')));
+  });
+}
+function recommendedModels(st) {   // donanıma uyan en güçlü set (otomatik modun seçtiği), indirme boyutlarıyla
+  const out = [];
+  for (const [key, R] of Object.entries(MODEL_CATALOG)) {
+    const o = R.secenek.find((x) => x.id && !x.yerel && x.ram <= st.limitGB);
+    if (o) out.push({ rol: key, rolAd: R.ad, id: o.id, ad: o.ad, indir: o.indir, kurulu: st.installed.includes(o.id) });
+  }
+  return out;
+}
+ipcMain.handle('setup:state', async () => {
+  const st = await modelState(true);
+  return {
+    packed: PACKED, dataDir: DATA_DIR, platform: process.platform, version: app.getVersion(), electron: process.versions.electron,
+    python: await pythonVersion(), dict: dictOk(),
+    ollama: { up: st.up, exe: ollamaExe() },
+    ramGB: st.sys.totalGB, limitGB: st.limitGB, gpu: st.sys.gpu, dedicated: st.sys.dedicated,
+    recommended: recommendedModels(st), installed: st.installed,
+    hasOcr: MODEL_CATALOG.ocr.secenek.some((o) => (o.yerel ? !!tesseractPath() : st.installed.includes(o.id))),
+  };
+});
+ipcMain.handle('setup:startOllama', async () => {
+  const exe = ollamaExe(); if (!exe) return { error: 'Ollama kurulu değil.' };
+  try {
+    if (process.platform === 'darwin') spawn('open', ['-a', exe], { detached: true, stdio: 'ignore' }).unref();
+    else if (/ollama app\.exe$/i.test(exe)) spawn(exe, [], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    else spawn(exe, ['serve'], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  } catch (e) { return { error: e.message }; }
+  for (let i = 0; i < 20; i++) { await new Promise((r) => setTimeout(r, 1000)); if ((await ollamaTags()).up) { modelCache = null; return { ok: true }; } }
+  return { error: 'Ollama başlatıldı ama yanıt vermiyor; birkaç saniye sonra tekrar dene.' };
+});
+ipcMain.handle('setup:installOllama', async () => {
+  if (process.platform !== 'win32') { shell.openExternal('https://ollama.com/download'); return { external: true }; }
+  const dest = path.join(os.tmpdir(), 'OllamaSetup.exe');
+  try {
+    await download('https://ollama.com/download/OllamaSetup.exe', dest, (p) => sendSetup({ kind: 'ollama', pct: p, status: 'indiriliyor' }));
+    sendSetup({ kind: 'ollama', pct: 1, status: 'kurulum penceresi açıldı' });
+    const r = await shell.openPath(dest); if (r) return { error: r };
+    return { ok: true };
+  } catch (e) { return { error: `Ollama indirilemedi: ${e.message}` }; }
+});
+ipcMain.handle('setup:dict', async () => {
+  try {
+    const files = ['tr_TR.aff', 'tr_TR.dic'];
+    for (let i = 0; i < files.length; i++) {
+      await download(DICT_BASE + files[i], path.join(SCRIPTS_DIR, files[i]), (p) => sendSetup({ kind: 'dict', pct: (i + p) / files.length, status: files[i] }));
+    }
+    return { ok: dictOk() };
+  } catch (e) { return { error: `Sözlük indirilemedi: ${e.message}` }; }
+});
+// Ollama /api/pull akışı: her katmanın (digest) toplam/tamamlanan baytı toplanıp yüzdeye çevrilir
+let pullReq = null, pullCancel = false;
+function pullOne(model) {
+  return new Promise((resolve) => {
+    const layers = new Map(); let buf = '', lastErr = '';
+    const body = JSON.stringify({ model, name: model, stream: true });
+    const req = http.request({ host: '127.0.0.1', port: 11434, path: '/api/pull', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, (res) => {
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        buf += chunk; let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (!line) continue;
+          let d; try { d = JSON.parse(line); } catch { continue; }
+          if (d.error) { lastErr = d.error; continue; }
+          if (d.digest && d.total) layers.set(d.digest, [d.completed || 0, d.total]);
+          let c = 0, t = 0; for (const [a, b] of layers.values()) { c += a; t += b; }
+          sendSetup({ kind: 'model', model, pct: t ? c / t : 0, status: d.status || '', gb: t / 1073741824 });
+        }
+      });
+      res.on('end', () => resolve(lastErr ? { error: lastErr } : res.statusCode === 200 ? { ok: true } : { error: `HTTP ${res.statusCode}` }));
+    });
+    req.on('error', (e) => resolve({ error: pullCancel ? 'iptal edildi' : e.message }));
+    pullReq = req; req.write(body); req.end();
+  });
+}
+ipcMain.handle('setup:pull', async (_e, models) => {
+  pullCancel = false; const result = {};
+  for (const m of models || []) {
+    if (pullCancel) { result[m] = { error: 'iptal edildi' }; continue; }
+    sendSetup({ kind: 'model', model: m, pct: 0, status: 'başlıyor' });
+    result[m] = await pullOne(m);
+    sendSetup({ kind: 'model', model: m, pct: result[m].ok ? 1 : 0, status: result[m].ok ? 'tamam' : result[m].error, done: true, ok: !!result[m].ok });
+  }
+  pullReq = null; modelCache = null;
+  return result;
+});
+ipcMain.handle('setup:cancel', () => { pullCancel = true; try { pullReq && pullReq.destroy(); } catch {} return true; });
+ipcMain.handle('setup:openData', () => shell.openPath(DATA_DIR));
+const SAFE_LINKS = ['https://www.python.org/downloads/', 'https://ollama.com/download', 'https://github.com/tdd-ai/hunspell-tr', 'https://github.com/emre6n-devv/erme-books'];
+ipcMain.handle('setup:link', (_e, url) => { if (SAFE_LINKS.includes(url)) shell.openExternal(url); return true; });
 ipcMain.handle('models:set', async (_e, s) => {
   const cur = readModelSettings();
-  const next = { mode: s?.mode === 'elle' ? 'elle' : 'otomatik', manual: { ...cur.manual, ...(s?.manual || {}) } };
-  try { fs.mkdirSync(path.dirname(settingsFile()), { recursive: true }); fs.writeFileSync(settingsFile(), JSON.stringify(next, null, 2), 'utf8'); } catch {}
+  writeModelSettings({ ...cur, mode: s?.mode === 'elle' ? 'elle' : 'otomatik', manual: { ...cur.manual, ...(s?.manual || {}) } });
   return modelState(true);
+});
+// Tarama kalitesi: {mode:'otomatik'} ölçüm geçmişini de sıfırlar; {mode:'elle', level} sabitler.
+// Çalışan bir OCR varsa yeni ayarla kaldığı yerden yeniden başlatılır.
+ipcMain.handle('scan:set', async (_e, s) => {
+  const cur = readModelSettings();
+  const t = s?.mode === 'elle' && SCAN_LEVELS[s.level] ? { mode: 'elle', level: s.level, learned: cur.tarama.learned } : { mode: 'otomatik', level: '', learned: null };
+  writeModelSettings({ ...cur, tarama: t });
+  const st = await modelState(true);
+  if (current && !current.finished && current.isOcr) {
+    current.send(`\n[AYAR] Tarama kalitesi "${st.scan.ad}" (${st.scan.dpi} DPI, bağlam ${st.scan.ctx}) yapıldı; okuma bu ayarla kaldığı yerden sürüyor…\n`);
+    restartJob(current);
+  }
+  return st;
 });
